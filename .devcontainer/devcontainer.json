@@ -1,0 +1,52 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/postgres
+{
+	"name": "Pydantic SchemaForms Dev Container",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"runArgs": [
+		"--init",
+		"--privileged",
+		"-v",
+		"/var/run/docker.sock:/var/run/docker.sock"
+	],
+	// "features": {
+	// 	"ghcr.io/devcontainers/features/node:1": {
+	// 		"nodeGypDependencies": true,
+	// 		"version": "18"
+	// 	},
+	// 	"ghcr.io/devcontainers-contrib/features/vue-cli:2": {
+	// 		"version": "latest"
+	// 	}
+	// },
+	"forwardPorts": [
+		5000,
+		5432,
+		32080
+	],
+	"postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && (sudo chmod 666 /var/run/docker.sock || true)",
+	// "postStartCommand": "",
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+			},
+			"extensions": [
+				"streetsidesoftware.code-spell-checker",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"donjayamanne.githistory",
+				"ecmel.vscode-html-css",
+				"hnw.vscode-auto-open-markdown-preview",
+				"kamikillerto.vscode-colorize",
+				"mikestead.dotenv",
+				"oderwat.indent-rainbow",
+				"wayou.vscode-todo-highlight",
+				"peakchen90.open-html-in-browser"
+			]
+		}
+	},
+	"remoteUser": "mike"
+}
