@@ -34,14 +34,11 @@ black: ## Reformat Python code to follow the Black code style
 	# black $(TESTS_PATH)
 	# black $(EXAMPLE_PATH)
 
-
-
 bump: ## Bump the version of the project
 	$(BUMPCALVER) --build --beta
 
 
 cleanup: isort ruff autoflake ## Run isort, ruff, autoflake
-
 
 
 flake8: ## Run flake8 to check Python code for PEP8 compliance
@@ -63,8 +60,6 @@ isort: ## Sort imports in Python code
 	$(PYTHON) -m isort $(TESTS_PATH)
 	$(PYTHON) -m isort $(EXAMPLE_PATH)
 
-
-
 test: ## Run the project's tests (linting + pytest + coverage badges)
 	@start=$$(date +%s); \
 	echo "🔍 Running pre-commit (ruff, formatting, yaml/toml checks)..."; \
@@ -85,6 +80,10 @@ ruff: ## Format Python code with Ruff
 	$(PYTHON) -m ruff check --fix --exit-non-zero-on-fix --show-fixes $(SERVICE_PATH)
 	$(PYTHON) -m ruff check --fix --exit-non-zero-on-fix --show-fixes $(TESTS_PATH)
 	$(PYTHON) -m ruff check --fix --exit-non-zero-on-fix --show-fixes $(EXAMPLE_PATH)
+
+
+run: ## Run the demo FastAPI app (async implementation)
+	$(PYTHON) -m uvicorn src.main:app --host 127.0.0.1 --port $(PORT) --reload --log-level $(LOG_LEVEL)
 
 
 ex-run: ## Run the FastAPI example (async implementation)
