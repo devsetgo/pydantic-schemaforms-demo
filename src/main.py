@@ -149,6 +149,7 @@ async def login_get(
         MinimalLoginForm,
         framework=style,
         form_data=form_data,
+        submit_url="/login",
         debug=debug,
     )
 
@@ -198,6 +199,7 @@ async def login_post(request: Request, style: str = "bootstrap", debug: bool = F
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/login",
             debug=debug,
         )
 
@@ -246,6 +248,7 @@ async def register_get(
         UserRegistrationForm,
         framework=style,
         form_data=form_data,
+        submit_url="/register",
         debug=debug,
     )
 
@@ -295,6 +298,7 @@ async def register_post(request: Request, style: str = "bootstrap", debug: bool 
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/register",
             debug=debug,
         )
 
@@ -343,6 +347,7 @@ async def user_get(
         UserRegistrationForm,
         framework=style,
         form_data=form_data,
+        submit_url="/user",
         debug=debug,
     )
 
@@ -392,6 +397,7 @@ async def user_post(request: Request, style: str = "bootstrap", debug: bool = Fa
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/user",
             debug=debug,
         )
 
@@ -428,17 +434,18 @@ async def contact_get(
     form_data = {}
     if demo:
         form_data = {
-            "name": "Demo User",
-            "email": "demo@example.com",
-            "subject": "Demo Inquiry",
+            "name": "Jordan Smith",
+            "email": "jordan.smith@example.com",
+            "subject": "Product Inquiry - Premium Features",
             "priority": "medium",
-            "message": "This is a demo message about pydantic-schemaforms capabilities."
+            "message": "Hello! I'm interested in learning more about your premium features and pricing options. Could you please provide detailed information about the enterprise plan and any volume discounts available? Thank you!"
         }
 
     form_html = render_form_html(
         ContactForm,
         framework=style,
         form_data=form_data,
+        submit_url="/contact",
         debug=debug,
     )
 
@@ -488,6 +495,7 @@ async def contact_post(request: Request, style: str = "bootstrap", debug: bool =
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/contact",
             debug=debug,
         )
 
@@ -524,15 +532,43 @@ async def pets_get(
     form_data = {}
     if demo:
         form_data = {
-            "owner_name": "Pet Owner",
-            "email": "pet.owner@example.com",
-            "pets": []
+            "owner_name": "Sarah Mitchell",
+            "email": "sarah.mitchell@example.com",
+            "address": "123 Main Street\r\nApt 4B\r\nSpringfield, IL 62701",
+            "emergency_contact": "John Mitchell - (555) 123-4567",
+            "pets": [
+                {
+                    "name": "Max",
+                    "species": "Dog",
+                    "age": 3,
+                    "weight": 65.5,
+                    "is_vaccinated": False,
+                    "microchipped": True,
+                    "breed": "Golden Retriever",
+                    "color": "#000000",
+                    "last_vet_visit": "2026-01-03",
+                    "special_needs": "Allergic to chicken-based foods"
+                },
+                {
+                    "name": "Luna",
+                    "species": "Dog",
+                    "age": 2,
+                    "weight": 8.5,
+                    "is_vaccinated": False,
+                    "microchipped": True,
+                    "breed": "Siamese",
+                    "color": "#000000",
+                    "last_vet_visit": "2026-01-04",
+                    "special_needs": "Indoor only, needs daily medication for thyroid"
+                }
+            ]
         }
 
     form_html = render_form_html(
         PetRegistrationForm,
         framework=style,
         form_data=form_data,
+        submit_url="/pets",
         debug=debug,
     )
 
@@ -582,6 +618,7 @@ async def pets_post(request: Request, style: str = "bootstrap", debug: bool = Fa
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/pets",
             debug=debug,
         )
 
@@ -621,14 +658,62 @@ async def showcase_get(
             "first_name": "Alex",
             "last_name": "Johnson",
             "email": "alex.johnson@example.com",
+            "phone": "+1 (555) 234-5678",
+            "birth_date": "1995-06-15",
             "age": 28,
-            "experience_level": "intermediate"
+            "favorite_color": "#3498db",
+            "experience_level": "intermediate",
+            "newsletter_subscription": True,
+            "rating": 8,
+            "address": "456 Oak Avenue\nUnit 12\nDowntown District",
+            "country": "US",
+            "pets": [
+                {
+                    "name": "Buddy",
+                    "species": "dog",
+                    "breed": "Labrador",
+                    "age": 4,
+                    "weight": 70.0,
+                    "microchipped": True,
+                    "vaccination_date": "2024-03-10",
+                    "special_needs": "Needs hip medication twice daily"
+                },
+                {
+                    "name": "Whiskers",
+                    "species": "cat",
+                    "breed": "Maine Coon",
+                    "age": 5,
+                    "weight": 12.5,
+                    "microchipped": True,
+                    "vaccination_date": "2024-04-05",
+                    "special_needs": "Requires grain-free diet"
+                }
+            ],
+            "emergency_contacts": [
+                {
+                    "name": "Emma Johnson",
+                    "relationship": "spouse",
+                    "phone": "+1 (555) 345-6789",
+                    "email": "emma.johnson@example.com",
+                    "available_24_7": True
+                },
+                {
+                    "name": "Robert Johnson",
+                    "relationship": "parent",
+                    "phone": "+1 (555) 456-7890",
+                    "email": "robert.johnson@example.com",
+                    "available_24_7": False
+                }
+            ],
+            "special_requests": "Please contact me via email for all communications. I work night shifts and may not be available by phone during the day.",
+            "terms_accepted": True
         }
 
     form_html = render_form_html(
         CompleteShowcaseForm,
         framework=style,
         form_data=form_data,
+        submit_url="/showcase",
         debug=debug,
     )
 
@@ -678,6 +763,7 @@ async def showcase_post(request: Request, style: str = "bootstrap", debug: bool 
             framework=style,
             form_data=form_dict,
             errors=result['errors'],
+            submit_url="/showcase",
             debug=debug,
         )
 
@@ -733,12 +819,19 @@ async def layouts_get(
                 "language": "en"
             },
             "list_tab": {
-                "project_name": "Demo Project",
+                "project_name": "Website Redesign Project",
                 "tasks": [
                     {
-                        "task_name": "Complete project setup",
+                        "task_name": "Complete project setup and requirements gathering",
                         "priority": "high",
-                        "due_date": "2024-12-01"
+                        "due_date": "2024-12-01",
+                        "completed": False
+                    },
+                    {
+                        "task_name": "Design mockups and wireframes",
+                        "priority": "medium",
+                        "due_date": "2024-12-15",
+                        "completed": False
                     }
                 ]
             }
@@ -851,10 +944,12 @@ async def self_contained(demo: bool = True, debug: bool = True):
     form_data = {}
     if demo:
         form_data = {
-            "username": "self_contained_user",
-            "email": "selfcontained@example.com",
-            "password": "DemoPass123!",
-            "confirm_password": "DemoPass123!",
+            "username": "alex_demo_user",
+            "email": "alex.demo@example.com",
+            "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
+            "age": 28,
+            "role": "user"
         }
 
     renderer = SimpleMaterialRenderer()
