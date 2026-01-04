@@ -939,7 +939,7 @@ async def layouts_post(request: Request, style: str = "bootstrap", debug: bool =
 # ============================================================================
 
 @app.get("/self-contained", response_class=HTMLResponse)
-async def self_contained(demo: bool = True, debug: bool = True):
+async def self_contained(style: str = "material", demo: bool = True, debug: bool = True):
     """Self-contained form demo - zero external dependencies."""
     form_data = {}
     if demo:
@@ -952,26 +952,50 @@ async def self_contained(demo: bool = True, debug: bool = True):
             "role": "user"
         }
 
-    renderer = SimpleMaterialRenderer()
-    form_html = renderer.render_form_from_model(
-        UserRegistrationForm, 
-        data=form_data, 
-        submit_url="/self-contained",
-        include_submit_button=True,
-        debug=debug
-    )
+    if style == "material":
+        renderer = SimpleMaterialRenderer()
+        form_html = renderer.render_form_from_model(
+            UserRegistrationForm, 
+            data=form_data, 
+            submit_url=f"/self-contained?style={style}",
+            include_submit_button=True,
+            debug=debug
+        )
+        style_name = "Material Design 3"
+    else:
+        renderer = EnhancedFormRenderer(framework=style)
+        form_html = renderer.render_form_from_model(
+            UserRegistrationForm, 
+            data=form_data, 
+            submit_url=f"/self-contained?style={style}",
+            include_submit_button=True,
+            debug=debug
+        )
+        style_name = "Bootstrap 5"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Self-Contained Form Demo</title>
+    <title>Self-Contained Form Demo - {style_name}</title>
 </head>
 <body style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui;">
     <h1>🎯 Self-Contained Form Demo (FastAPI)</h1>
     <p><strong>This form includes ZERO external dependencies!</strong></p>
+    <p>Current style: <strong>{style_name}</strong></p>
     <p>Everything needed is embedded in the form HTML below:</p>
+
+    <div style="margin-bottom: 20px; text-align: center;">
+        <a href="/self-contained?style=bootstrap&demo=true&debug=true" 
+           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#0d6efd' if style == 'bootstrap' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
+            Bootstrap
+        </a>
+        <a href="/self-contained?style=material&demo=true&debug=true" 
+           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#1976d2' if style == 'material' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
+            Material
+        </a>
+    </div>
 
     <div style="border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; background: #f8f9fa;">
         {form_html}
@@ -980,7 +1004,7 @@ async def self_contained(demo: bool = True, debug: bool = True):
     <div style="margin-top: 30px; padding: 20px; background: #e7f3ff; border-radius: 8px;">
         <h3>🔧 What's Included:</h3>
         <ul>
-            <li>✅ Complete Material Design 3 CSS</li>
+            <li>✅ Complete {style_name} CSS</li>
             <li>✅ JavaScript for interactions</li>
             <li>✅ Icons (inline SVG)</li>
             <li>✅ Form validation and styling</li>
@@ -997,7 +1021,7 @@ async def self_contained(demo: bool = True, debug: bool = True):
 
 
 @app.post("/self-contained", response_class=HTMLResponse)
-async def self_contained_post(request: Request, debug: bool = False):
+async def self_contained_post(request: Request, style: str = "material", debug: bool = False):
     """Handle self-contained form submission."""
     form_data = await request.form()
     form_dict = dict(form_data)
@@ -1020,28 +1044,53 @@ async def self_contained_post(request: Request, debug: bool = False):
             }
         )
     else:
-        renderer = SimpleMaterialRenderer()
-        form_html = renderer.render_form_from_model(
-            UserRegistrationForm, 
-            data=form_dict, 
-            errors=result['errors'],
-            submit_url="/self-contained",
-            include_submit_button=True,
-            debug=debug
-        )
+        if style == "material":
+            renderer = SimpleMaterialRenderer()
+            form_html = renderer.render_form_from_model(
+                UserRegistrationForm, 
+                data=form_dict, 
+                errors=result['errors'],
+                submit_url=f"/self-contained?style={style}",
+                include_submit_button=True,
+                debug=debug
+            )
+            style_name = "Material Design 3"
+        else:
+            renderer = EnhancedFormRenderer(framework=style)
+            form_html = renderer.render_form_from_model(
+                UserRegistrationForm, 
+                data=form_dict, 
+                errors=result['errors'],
+                submit_url=f"/self-contained?style={style}",
+                include_submit_button=True,
+                debug=debug
+            )
+            style_name = "Bootstrap 5"
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Self-Contained Form Demo</title>
+    <title>Self-Contained Form Demo - {style_name}</title>
 </head>
 <body style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui;">
     <h1>🎯 Self-Contained Form Demo (FastAPI)</h1>
     <p><strong>This form includes ZERO external dependencies!</strong></p>
+    <p>Current style: <strong>{style_name}</strong></p>
     
     {"<div style='background: #fee; padding: 15px; border-radius: 8px; margin-bottom: 20px;'><strong>⚠️ Validation Errors:</strong><ul>" + "".join([f"<li>{err}</li>" for err in result['errors']]) + "</ul></div>" if result['errors'] else ""}
+
+    <div style="margin-bottom: 20px; text-align: center;">
+        <a href="/self-contained?style=bootstrap&demo=true&debug=true" 
+           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#0d6efd' if style == 'bootstrap' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
+            Bootstrap
+        </a>
+        <a href="/self-contained?style=material&demo=true&debug=true" 
+           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#1976d2' if style == 'material' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
+            Material
+        </a>
+    </div>
 
     <div style="border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; background: #f8f9fa;">
         {form_html}

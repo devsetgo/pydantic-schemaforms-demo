@@ -94,3 +94,10 @@ kill:  # Kill any process running on the app port
 	@echo "Stopping any process running on port ${PORT}..."
 	@lsof -ti:${PORT} | xargs -r kill -9 || echo "No process found running on port ${PORT}"
 	@echo "Port ${PORT} is now free"
+
+docker-build: ## Build the Docker image for the demo app
+	docker build -t $(REPONAME):APP_VERSION .
+
+docker-push: ## Push the Docker image to Docker Hub
+	docker tag $(REPONAME):APP_VERSION mikeryan56/$(REPONAME):APP_VERSION
+	docker push mikeryan56/$(REPONAME):APP_VERSION
