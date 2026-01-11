@@ -96,8 +96,11 @@ kill:  # Kill any process running on the app port
 	@echo "Port ${PORT} is now free"
 
 docker-build: ## Build the Docker image for the demo app
-	docker build -t $(REPONAME):APP_VERSION .
+	docker build --no-cache -t $(REPONAME):${APP_VERSION} .
 
 docker-push: ## Push the Docker image to Docker Hub
 	docker tag $(REPONAME):APP_VERSION mikeryan56/$(REPONAME):APP_VERSION
-	docker push mikeryan56/$(REPONAME):APP_VERSION
+	docker push mikeryan56/$(REPONAME):${APP_VERSION}
+
+docker-run: ## Run the Docker container for the demo app
+	docker run -d -p $(PORT):$(PORT) --name $(REPONAME)_container $(REPONAME):${APP_VERSION}
