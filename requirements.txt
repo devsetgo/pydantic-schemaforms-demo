@@ -4,7 +4,7 @@ devsetgo-lib==2025.10.4.2 # Vulnerabilities: None
 fastapi[all]==0.128.0 # From none | Vulnerabilities: None
 httpx==0.28.1 # From none | Vulnerabilities: None
 pre-commit==4.5.1 # Vulnerabilities: None
-pydantic-schemaforms==26.1.1b0 # From none | Vulnerabilities: None
+pydantic-schemaforms==26.1.2b0 # From 26.1.1b0 | Vulnerabilities: None
 pytest==9.0.2 # From none | Vulnerabilities: None
 python-dotenv==1.2.1 # From none | Vulnerabilities: None
 ruff==0.14.10 # Vulnerabilities: None
