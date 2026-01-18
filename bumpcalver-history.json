@@ -1,5 +1,24 @@
 [
   {
+    "operation_id": "20260118_210436_687",
+    "timestamp": "2026-01-18T21:04:36.695296",
+    "version": "26.1.1.beta",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260118_210436_687_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260118_210436_687_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260118_210436_687___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.1.1.beta"
+  },
+  {
     "operation_id": "20260103_011709_747",
     "timestamp": "2026-01-03T01:17:09.753005",
     "version": "26.1.2.beta",

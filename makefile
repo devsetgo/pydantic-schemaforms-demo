@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.1.2.beta
+APP_VERSION = 26.1.1.beta
 PYTHON = python3
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
@@ -104,3 +104,5 @@ docker-push: ## Push the Docker image to Docker Hub
 
 docker-run: ## Run the Docker container for the demo app
 	docker run -d -p $(PORT):$(PORT) --name $(REPONAME)_container $(REPONAME):${APP_VERSION}
+
+docker-deploy: docker-build docker-push ## Build, push, and run the Docker container for the demo app
