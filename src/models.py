@@ -18,13 +18,14 @@ from pydantic_schemaforms.form_layouts import HorizontalLayout, TabbedLayout, Ve
 from pydantic_schemaforms.schema_form import FormModel
 from pydantic_schemaforms.validation import validate_form_data
 
-
 # ============================================================================
 # ENUMS
 # ============================================================================
 
+
 class Priority(str, Enum):
     """Priority levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -33,6 +34,7 @@ class Priority(str, Enum):
 
 class UserRole(str, Enum):
     """User roles."""
+
     USER = "user"
     ADMIN = "admin"
     MODERATOR = "moderator"
@@ -40,6 +42,7 @@ class UserRole(str, Enum):
 
 class Country(str, Enum):
     """Countries for selection."""
+
     US = "United States"
     CA = "Canada"
     UK = "United Kingdom"
@@ -53,6 +56,7 @@ class Country(str, Enum):
 # BASIC FORM MODELS
 # ============================================================================
 
+
 class PetModel(FormModel):
     """Enhanced pet information model showcasing various input types."""
 
@@ -63,7 +67,7 @@ class PetModel(FormModel):
         help_text="The name of your pet",
         icon="heart",
         min_length=1,
-        max_length=50
+        max_length=50,
     )
 
     species: str = FormField(
@@ -77,10 +81,10 @@ class PetModel(FormModel):
             {"value": "Rabbit", "label": "Rabbit 🐰"},
             {"value": "Hamster", "label": "Hamster 🐹"},
             {"value": "Reptile", "label": "Reptile 🦎"},
-            {"value": "Other", "label": "Other 🐾"}
+            {"value": "Other", "label": "Other 🐾"},
         ],
         help_text="What type of animal is your pet?",
-        icon="collection"
+        icon="collection",
     )
 
     age: Optional[int] = FormField(
@@ -91,7 +95,7 @@ class PetModel(FormModel):
         help_text="How old is your pet? (optional)",
         icon="calendar",
         min_value=0,
-        max_value=50
+        max_value=50,
     )
 
     weight: Optional[float] = FormField(
@@ -102,7 +106,7 @@ class PetModel(FormModel):
         help_text="Weight in pounds (optional - enter 0.01 for tiny pets like birds)",
         icon="speedometer2",
         min_value=0.01,
-        max_value=500.0
+        max_value=500.0,
     )
 
     is_vaccinated: bool = FormField(
@@ -110,7 +114,7 @@ class PetModel(FormModel):
         title="Vaccinated",
         input_type="checkbox",
         help_text="Is your pet up to date with vaccinations?",
-        icon="shield-check"
+        icon="shield-check",
     )
 
     microchipped: bool = FormField(
@@ -118,7 +122,7 @@ class PetModel(FormModel):
         title="Microchipped",
         input_type="checkbox",
         help_text="Does your pet have a microchip?",
-        icon="cpu"
+        icon="cpu",
     )
 
     breed: Optional[str] = FormField(
@@ -128,7 +132,7 @@ class PetModel(FormModel):
         placeholder="e.g., Golden Retriever, Persian Cat",
         help_text="Specific breed of your pet (optional)",
         icon="award",
-        max_length=100
+        max_length=100,
     )
 
     color: Optional[str] = FormField(
@@ -136,7 +140,7 @@ class PetModel(FormModel):
         title="Primary Color",
         input_type="color",
         help_text="Primary color of your pet (optional)",
-        icon="palette"
+        icon="palette",
     )
 
     last_vet_visit: Optional[date] = FormField(
@@ -144,7 +148,7 @@ class PetModel(FormModel):
         title="Last Vet Visit",
         input_type="date",
         help_text="When was the last veterinary checkup? (optional)",
-        icon="calendar-date"
+        icon="calendar-date",
     )
 
     special_needs: Optional[str] = FormField(
@@ -154,7 +158,7 @@ class PetModel(FormModel):
         placeholder="Any special care requirements, medications, allergies, etc.",
         help_text="Describe any special care requirements (optional)",
         icon="heart-pulse",
-        max_length=500
+        max_length=500,
     )
 
 
@@ -168,7 +172,7 @@ class MinimalLoginForm(FormModel):
         help_text="Your username or email address",
         icon="person",
         min_length=3,
-        max_length=50
+        max_length=50,
     )
 
     password: str = FormField(
@@ -177,7 +181,7 @@ class MinimalLoginForm(FormModel):
         placeholder="Enter your password",
         help_text="Your account password",
         icon="lock",
-        min_length=6
+        min_length=6,
     )
 
     remember_me: bool = FormField(
@@ -185,7 +189,7 @@ class MinimalLoginForm(FormModel):
         title="Remember me",
         input_type="checkbox",
         help_text="Keep me logged in on this device",
-        icon="check2-square"
+        icon="check2-square",
     )
 
     @field_validator("username")
@@ -206,7 +210,7 @@ class UserRegistrationForm(FormModel):
         help_text="Your unique username (3-50 characters)",
         icon="person",
         min_length=3,
-        max_length=50
+        max_length=50,
     )
 
     email: EmailStr = FormField(
@@ -214,7 +218,7 @@ class UserRegistrationForm(FormModel):
         input_type="email",
         placeholder="your.email@example.com",
         help_text="Your email address for account verification",
-        icon="email"
+        icon="email",
     )
 
     password: str = FormField(
@@ -223,7 +227,7 @@ class UserRegistrationForm(FormModel):
         placeholder="Create a strong password",
         help_text="Password must be at least 8 characters",
         icon="lock",
-        min_length=8
+        min_length=8,
     )
 
     confirm_password: str = FormField(
@@ -231,7 +235,7 @@ class UserRegistrationForm(FormModel):
         input_type="password",
         placeholder="Confirm your password",
         help_text="Re-enter your password to confirm",
-        icon="lock"
+        icon="lock",
     )
 
     age: Optional[int] = FormField(
@@ -242,7 +246,7 @@ class UserRegistrationForm(FormModel):
         help_text="Your age in years",
         icon="calendar",
         min_value=13,
-        max_value=120
+        max_value=120,
     )
 
     role: UserRole = FormField(
@@ -252,10 +256,10 @@ class UserRegistrationForm(FormModel):
         options=[
             {"value": "user", "label": "👤 User"},
             {"value": "admin", "label": "🔑 Admin"},
-            {"value": "moderator", "label": "🛡️ Moderator"}
+            {"value": "moderator", "label": "🛡️ Moderator"},
         ],
         help_text="Select your account type",
-        icon="shield"
+        icon="shield",
     )
 
     @field_validator("username")
@@ -263,14 +267,14 @@ class UserRegistrationForm(FormModel):
     def validate_username(cls, v):
         if not v.strip():
             raise ValueError("Username cannot be empty")
-        if not v.replace('_', '').replace('-', '').isalnum():
+        if not v.replace("_", "").replace("-", "").isalnum():
             raise ValueError("Username can only contain letters, numbers, hyphens, and underscores")
         return v.strip()
 
     @field_validator("confirm_password")
     @classmethod
     def validate_passwords_match(cls, v, info):
-        if 'password' in info.data and v != info.data['password']:
+        if "password" in info.data and v != info.data["password"]:
             raise ValueError("Passwords do not match")
         return v
 
@@ -283,14 +287,11 @@ class ContactForm(FormModel):
         input_type="text",
         placeholder="Enter your name",
         icon="user",
-        min_length=2
+        min_length=2,
     )
 
     email: EmailStr = FormField(
-        title="Email Address",
-        input_type="email",
-        placeholder="your.email@example.com",
-        icon="mail"
+        title="Email Address", input_type="email", placeholder="your.email@example.com", icon="mail"
     )
 
     subject: str = FormField(
@@ -299,14 +300,11 @@ class ContactForm(FormModel):
         placeholder="What is this about?",
         icon="message",
         min_length=5,
-        max_length=100
+        max_length=100,
     )
 
     priority: Priority = FormField(
-        Priority.MEDIUM,
-        title="Priority",
-        input_type="select",
-        icon="flag"
+        Priority.MEDIUM, title="Priority", input_type="select", icon="flag"
     )
 
     message: str = FormField(
@@ -316,7 +314,7 @@ class ContactForm(FormModel):
         help_text="Minimum 10 characters",
         icon="chat",
         min_length=10,
-        max_length=5000
+        max_length=5000,
     )
 
 
@@ -330,7 +328,7 @@ class EmergencyContactModel(FormModel):
         help_text="Full name of emergency contact",
         icon="person-badge",
         min_length=2,
-        max_length=100
+        max_length=100,
     )
 
     relationship: str = FormField(
@@ -343,10 +341,10 @@ class EmergencyContactModel(FormModel):
             {"value": "sibling", "label": "👫 Sibling"},
             {"value": "friend", "label": "👥 Friend"},
             {"value": "colleague", "label": "💼 Colleague"},
-            {"value": "other", "label": "🤝 Other"}
+            {"value": "other", "label": "🤝 Other"},
         ],
         help_text="Your relationship to this person",
-        icon="people"
+        icon="people",
     )
 
     phone: str = FormField(
@@ -356,7 +354,7 @@ class EmergencyContactModel(FormModel):
         help_text="Primary phone number for this contact",
         icon="telephone",
         min_length=10,
-        max_length=20
+        max_length=20,
     )
 
     email: Optional[EmailStr] = FormField(
@@ -365,7 +363,7 @@ class EmergencyContactModel(FormModel):
         input_type="email",
         placeholder="contact@example.com",
         help_text="Email address (optional)",
-        icon="envelope"
+        icon="envelope",
     )
 
     available_24_7: bool = FormField(
@@ -373,7 +371,7 @@ class EmergencyContactModel(FormModel):
         title="Available 24/7",
         input_type="checkbox",
         help_text="Can this person be contacted at any time?",
-        icon="clock"
+        icon="clock",
     )
 
 
@@ -387,7 +385,7 @@ class PetRegistrationForm(FormModel):
         help_text="Your full name as the pet owner",
         icon="person",
         min_length=2,
-        max_length=100
+        max_length=100,
     )
 
     email: EmailStr = FormField(
@@ -395,7 +393,7 @@ class PetRegistrationForm(FormModel):
         input_type="email",
         placeholder="your.email@example.com",
         help_text="Your contact email address",
-        icon="envelope"
+        icon="envelope",
     )
 
     address: Optional[str] = FormField(
@@ -405,7 +403,7 @@ class PetRegistrationForm(FormModel):
         placeholder="Enter your full address...",
         help_text="Your home address (optional)",
         icon="house",
-        max_length=500
+        max_length=500,
     )
 
     emergency_contact: Optional[str] = FormField(
@@ -415,7 +413,7 @@ class PetRegistrationForm(FormModel):
         placeholder="Emergency contact name and phone",
         help_text="Someone to contact in case of emergency",
         icon="person-exclamation",
-        max_length=100
+        max_length=100,
     )
 
     pets: List[PetModel] = FormField(
@@ -437,8 +435,8 @@ class PetRegistrationForm(FormModel):
             "section_description": "Register each of your beloved pets with detailed information",
             "icon": "bi bi-heart-fill",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
@@ -460,7 +458,7 @@ class CompleteShowcaseForm(FormModel):
         help_text="Your given name as it appears on official documents",
         icon="person",
         min_length=2,
-        max_length=50
+        max_length=50,
     )
 
     last_name: str = FormField(
@@ -470,7 +468,7 @@ class CompleteShowcaseForm(FormModel):
         help_text="Your family name or surname",
         icon="person",
         min_length=2,
-        max_length=50
+        max_length=50,
     )
 
     email: EmailStr = FormField(
@@ -478,7 +476,7 @@ class CompleteShowcaseForm(FormModel):
         input_type="email",
         placeholder="your.email@example.com",
         help_text="We'll use this to contact you about your registration",
-        icon="envelope"
+        icon="envelope",
     )
 
     phone: Optional[str] = FormField(
@@ -488,7 +486,7 @@ class CompleteShowcaseForm(FormModel):
         placeholder="+1 (555) 123-4567",
         help_text="Include country code for international numbers",
         icon="telephone",
-        pattern=r"^[\+]?[1-9][\d]{0,15}$"
+        pattern=r"^[\+]?[1-9][\d]{0,15}$",
     )
 
     birth_date: Optional[date] = FormField(
@@ -496,7 +494,7 @@ class CompleteShowcaseForm(FormModel):
         title="Date of Birth",
         input_type="date",
         help_text="Used to verify age requirements (optional)",
-        icon="calendar-date"
+        icon="calendar-date",
     )
 
     age: Optional[int] = FormField(
@@ -507,7 +505,7 @@ class CompleteShowcaseForm(FormModel):
         help_text="Your current age in years",
         icon="hash",
         min_value=13,
-        max_value=120
+        max_value=120,
     )
 
     # ======== PREFERENCES SECTION ========
@@ -516,7 +514,7 @@ class CompleteShowcaseForm(FormModel):
         title="Favorite Color",
         input_type="color",
         help_text="Pick your favorite color",
-        icon="palette"
+        icon="palette",
     )
 
     experience_level: str = FormField(
@@ -526,10 +524,10 @@ class CompleteShowcaseForm(FormModel):
             {"value": "beginner", "label": "🌱 Beginner (0-1 years)"},
             {"value": "intermediate", "label": "🚀 Intermediate (2-5 years)"},
             {"value": "advanced", "label": "🎯 Advanced (5-10 years)"},
-            {"value": "expert", "label": "🏆 Expert (10+ years)"}
+            {"value": "expert", "label": "🏆 Expert (10+ years)"},
         ],
         help_text="Select your experience level",
-        icon="trophy"
+        icon="trophy",
     )
 
     newsletter_subscription: bool = FormField(
@@ -537,7 +535,7 @@ class CompleteShowcaseForm(FormModel):
         title="Subscribe to Newsletter",
         input_type="checkbox",
         help_text="Receive updates and news about our services",
-        icon="mailbox"
+        icon="mailbox",
     )
 
     rating: Optional[int] = FormField(
@@ -547,7 +545,7 @@ class CompleteShowcaseForm(FormModel):
         help_text="How interested are you in our services?",
         icon="star",
         min_value=1,
-        max_value=10
+        max_value=10,
     )
 
     # ======== ADDRESS INFORMATION ========
@@ -558,7 +556,7 @@ class CompleteShowcaseForm(FormModel):
         placeholder="123 Main Street\nApt 4B",
         help_text="Your full mailing address (optional)",
         icon="house",
-        max_length=500
+        max_length=500,
     )
 
     country: Optional[Country] = FormField(
@@ -572,10 +570,10 @@ class CompleteShowcaseForm(FormModel):
             {"value": "DE", "label": "🇩🇪 Germany"},
             {"value": "FR", "label": "🇫🇷 France"},
             {"value": "AU", "label": "🇦🇺 Australia"},
-            {"value": "OTHER", "label": "🌍 Other"}
+            {"value": "OTHER", "label": "🌍 Other"},
         ],
         help_text="Select your country of residence",
-        icon="globe"
+        icon="globe",
     )
 
     # ======== PETS SECTION (ENHANCED LIST) ========
@@ -598,8 +596,8 @@ class CompleteShowcaseForm(FormModel):
             "section_description": "Register each of your pets with detailed information for our records",
             "icon": "bi bi-heart-fill",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     # ======== EMERGENCY CONTACTS (ANOTHER LIST) ========
@@ -622,8 +620,8 @@ class CompleteShowcaseForm(FormModel):
             "section_description": "At least one emergency contact is required",
             "icon": "bi bi-shield-exclamation",
             "collapsible": False,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     # ======== ADDITIONAL PREFERENCES ========
@@ -634,7 +632,7 @@ class CompleteShowcaseForm(FormModel):
         placeholder="Any special requests, dietary restrictions, accessibility needs, or additional comments...",
         help_text="Let us know about any special accommodations you need",
         icon="chat-dots",
-        max_length=1000
+        max_length=1000,
     )
 
     terms_accepted: bool = FormField(
@@ -642,14 +640,14 @@ class CompleteShowcaseForm(FormModel):
         title="I accept the Terms and Conditions",
         input_type="checkbox",
         help_text="You must accept the terms to proceed",
-        icon="check-square"
+        icon="check-square",
     )
 
-    @field_validator('terms_accepted')
+    @field_validator("terms_accepted")
     @classmethod
     def validate_terms(cls, v):
         if not v:
-            raise ValueError('You must accept the terms and conditions')
+            raise ValueError("You must accept the terms and conditions")
         return v
 
 
@@ -657,8 +655,10 @@ class CompleteShowcaseForm(FormModel):
 # LAYOUT DEMONSTRATION FORMS
 # ============================================================================
 
+
 class TaskItem(FormModel):
     """Individual task item for list layout demonstration."""
+
     task_name: str = FormField(
         title="Task Description",
         input_type="text",
@@ -666,7 +666,7 @@ class TaskItem(FormModel):
         help_text="What needs to be done?",
         icon="check-square",
         min_length=1,
-        max_length=100
+        max_length=100,
     )
 
     priority: str = FormField(
@@ -677,10 +677,10 @@ class TaskItem(FormModel):
             {"value": "low", "label": "🟢 Low"},
             {"value": "medium", "label": "🟡 Medium"},
             {"value": "high", "label": "🟠 High"},
-            {"value": "urgent", "label": "🔴 Urgent"}
+            {"value": "urgent", "label": "🔴 Urgent"},
         ],
         help_text="How important is this task?",
-        icon="exclamation-triangle"
+        icon="exclamation-triangle",
     )
 
     due_date: Optional[date] = FormField(
@@ -688,7 +688,7 @@ class TaskItem(FormModel):
         title="Due Date",
         input_type="date",
         help_text="When should this be completed? (optional)",
-        icon="calendar-date"
+        icon="calendar-date",
     )
 
     completed: bool = FormField(
@@ -696,7 +696,7 @@ class TaskItem(FormModel):
         title="Completed",
         input_type="checkbox",
         help_text="Is this task done?",
-        icon="check"
+        icon="check",
     )
 
 
@@ -710,7 +710,7 @@ class PersonalInfoForm(FormModel):
         help_text="Your given name",
         icon="person",
         min_length=2,
-        max_length=50
+        max_length=50,
     )
 
     last_name: str = FormField(
@@ -720,7 +720,7 @@ class PersonalInfoForm(FormModel):
         help_text="Your family name",
         icon="person",
         min_length=2,
-        max_length=50
+        max_length=50,
     )
 
     email: EmailStr = FormField(
@@ -728,7 +728,7 @@ class PersonalInfoForm(FormModel):
         input_type="email",
         placeholder="your.email@example.com",
         help_text="Your email address",
-        icon="envelope"
+        icon="envelope",
     )
 
     birth_date: Optional[date] = FormField(
@@ -736,7 +736,7 @@ class PersonalInfoForm(FormModel):
         title="Date of Birth",
         input_type="date",
         help_text="Your birth date (optional)",
-        icon="calendar-date"
+        icon="calendar-date",
     )
 
 
@@ -750,7 +750,7 @@ class ContactInfoForm(FormModel):
         placeholder="+1 (555) 123-4567",
         help_text="Your contact phone number",
         icon="telephone",
-        max_length=20
+        max_length=20,
     )
 
     address: str = FormField(
@@ -759,7 +759,7 @@ class ContactInfoForm(FormModel):
         placeholder="123 Main Street",
         help_text="Your street address",
         icon="house",
-        max_length=200
+        max_length=200,
     )
 
     city: str = FormField(
@@ -768,7 +768,7 @@ class ContactInfoForm(FormModel):
         placeholder="Your city",
         help_text="City where you live",
         icon="building",
-        max_length=100
+        max_length=100,
     )
 
     postal_code: Optional[str] = FormField(
@@ -778,7 +778,7 @@ class ContactInfoForm(FormModel):
         placeholder="12345",
         help_text="ZIP or postal code",
         icon="mailbox",
-        max_length=10
+        max_length=10,
     )
 
 
@@ -790,7 +790,7 @@ class PreferencesForm(FormModel):
         title="Email Notifications",
         input_type="checkbox",
         help_text="Receive notifications via email",
-        icon="envelope"
+        icon="envelope",
     )
 
     notification_sms: bool = FormField(
@@ -798,7 +798,7 @@ class PreferencesForm(FormModel):
         title="SMS Notifications",
         input_type="checkbox",
         help_text="Receive notifications via SMS",
-        icon="phone"
+        icon="phone",
     )
 
     theme: str = FormField(
@@ -808,10 +808,10 @@ class PreferencesForm(FormModel):
         options=[
             {"value": "light", "label": "☀️ Light Theme"},
             {"value": "dark", "label": "🌙 Dark Theme"},
-            {"value": "auto", "label": "🔄 Auto (System)"}
+            {"value": "auto", "label": "🔄 Auto (System)"},
         ],
         help_text="Choose your preferred theme",
-        icon="palette"
+        icon="palette",
     )
 
     language: str = FormField(
@@ -822,10 +822,10 @@ class PreferencesForm(FormModel):
             {"value": "en", "label": "🇺🇸 English"},
             {"value": "es", "label": "🇪🇸 Spanish"},
             {"value": "fr", "label": "🇫🇷 French"},
-            {"value": "de", "label": "🇩🇪 German"}
+            {"value": "de", "label": "🇩🇪 German"},
         ],
         help_text="Select your preferred language",
-        icon="globe"
+        icon="globe",
     )
 
 
@@ -854,16 +854,16 @@ class TaskListForm(FormModel):
         add_button_text="Add Task",
         remove_button_text="Remove Task",
         collapsible_items=True,
-        items_expanded_by_default=True
+        items_expanded_by_default=True,
     )
 
-    @field_validator('tasks')
+    @field_validator("tasks")
     @classmethod
     def validate_tasks(cls, v):
         if len(v) < 1:
-            raise ValueError('At least one task is required')
+            raise ValueError("At least one task is required")
         if len(v) > 10:
-            raise ValueError('Maximum 10 tasks allowed')
+            raise ValueError("Maximum 10 tasks allowed")
         return v
 
 
@@ -871,24 +871,29 @@ class TaskListForm(FormModel):
 # LAYOUT CLASSES
 # ============================================================================
 
+
 class VerticalFormLayout(VerticalLayout):
     """Vertical layout - default stacked form layout."""
+
     form = PersonalInfoForm
 
 
 class HorizontalFormLayout(HorizontalLayout):
     """Horizontal layout - side-by-side form arrangement."""
+
     form = ContactInfoForm
 
 
 class TabbedFormLayout(TabbedLayout):
     """Tabbed layout - preferences organized in tabs."""
+
     notifications = PreferencesForm
     appearance = PreferencesForm
 
 
 class ListFormLayout(VerticalLayout):
     """List layout - form with dynamic task list."""
+
     form = TaskListForm
 
 
@@ -899,38 +904,40 @@ class LayoutDemonstrationForm(FormModel):
     This demonstrates how to use layout classes as field types in a Pydantic form.
     Each field represents a different layout type that can be rendered as a tab.
     """
+
     vertical_tab: VerticalFormLayout = FormField(
         VerticalFormLayout(),
         title="Personal Info",
         input_type="layout",
-        help_text="Vertical layout demonstration"
+        help_text="Vertical layout demonstration",
     )
 
     horizontal_tab: HorizontalFormLayout = FormField(
         HorizontalFormLayout(),
         title="Contact Info",
         input_type="layout",
-        help_text="Horizontal layout demonstration"
+        help_text="Horizontal layout demonstration",
     )
 
     tabbed_tab: TabbedFormLayout = FormField(
         TabbedFormLayout(),
         title="Preferences",
         input_type="layout",
-        help_text="Tabbed layout demonstration"
+        help_text="Tabbed layout demonstration",
     )
 
     list_tab: ListFormLayout = FormField(
         ListFormLayout(),
         title="Task List",
         input_type="layout",
-        help_text="List layout demonstration"
+        help_text="List layout demonstration",
     )
 
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
 
 def parse_nested_form_data(form_data):
     """
@@ -950,7 +957,7 @@ def parse_nested_form_data(form_data):
 
     for key, value in form_data.items():
         # Handle array notation like pets[0].name
-        array_match = re.match(r'^(\w+)\[(\d+)\]\.(\w+)$', key)
+        array_match = re.match(r"^(\w+)\[(\d+)\]\.(\w+)$", key)
         if array_match:
             array_name, index, field_name = array_match.groups()
             index = int(index)
@@ -985,13 +992,13 @@ def convert_form_value(value):
     """
     if isinstance(value, str):
         # Handle boolean values
-        if value.lower() == 'true':
+        if value.lower() == "true":
             return True
-        elif value.lower() == 'false':
+        elif value.lower() == "false":
             return False
-        elif value.lower() in ('on', 'yes', '1'):
+        elif value.lower() in ("on", "yes", "1"):
             return True
-        elif value.lower() in ('off', 'no', '0'):
+        elif value.lower() in ("off", "no", "0"):
             return False
 
     return value
@@ -1008,20 +1015,10 @@ def handle_form_submission(form_class, form_data, success_message="Form submitte
 
         if result.is_valid:
             # Return success response
-            return {
-                'success': True,
-                'message': success_message,
-                'data': result.data
-            }
+            return {"success": True, "message": success_message, "data": result.data}
         else:
             # Return validation errors
-            return {
-                'success': False,
-                'errors': result.errors
-            }
+            return {"success": False, "errors": result.errors}
     except Exception as e:
         # Return unexpected errors
-        return {
-            'success': False,
-            'errors': {'form': str(e)}
-        }
+        return {"success": False, "errors": {"form": str(e)}}
