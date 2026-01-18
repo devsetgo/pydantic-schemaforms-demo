@@ -34,14 +34,11 @@ black: ## Reformat Python code to follow the Black code style
 	# black $(TESTS_PATH)
 	# black $(EXAMPLE_PATH)
 
-
-
 bump: ## Bump the version of the project
 	$(BUMPCALVER) --build --beta
 
 
 cleanup: isort ruff autoflake ## Run isort, ruff, autoflake
-
 
 
 flake8: ## Run flake8 to check Python code for PEP8 compliance
@@ -62,8 +59,6 @@ isort: ## Sort imports in Python code
 	$(PYTHON) -m isort $(SERVICE_PATH)
 	$(PYTHON) -m isort $(TESTS_PATH)
 	$(PYTHON) -m isort $(EXAMPLE_PATH)
-
-
 
 test: ## Run the project's tests (linting + pytest + coverage badges)
 	@start=$$(date +%s); \
@@ -87,6 +82,10 @@ ruff: ## Format Python code with Ruff
 	$(PYTHON) -m ruff check --fix --exit-non-zero-on-fix --show-fixes $(EXAMPLE_PATH)
 
 
+run: ## Run the demo FastAPI app (async implementation)
+	$(PYTHON) -m uvicorn src.main:app --host 127.0.0.1 --port $(PORT) --reload --log-level $(LOG_LEVEL)
+
+
 ex-run: ## Run the FastAPI example (async implementation)
 	cd examples && $(PYTHON) -m uvicorn fastapi_example:app --port 5000 --reload --log-level $(LOG_LEVEL)
 
@@ -95,3 +94,13 @@ kill:  # Kill any process running on the app port
 	@echo "Stopping any process running on port ${PORT}..."
 	@lsof -ti:${PORT} | xargs -r kill -9 || echo "No process found running on port ${PORT}"
 	@echo "Port ${PORT} is now free"
+
+docker-build: ## Build the Docker image for the demo app
+	docker build --no-cache -t $(REPONAME):${APP_VERSION} .
+
+docker-push: ## Push the Docker image to Docker Hub
+	docker tag $(REPONAME):APP_VERSION mikeryan56/$(REPONAME):APP_VERSION
+	docker push mikeryan56/$(REPONAME):${APP_VERSION}
+
+docker-run: ## Run the Docker container for the demo app
+	docker run -d -p $(PORT):$(PORT) --name $(REPONAME)_container $(REPONAME):${APP_VERSION}
