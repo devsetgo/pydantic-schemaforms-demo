@@ -18,6 +18,9 @@ import os
 import re
 import sqlite3
 import time
+import json
+import ipaddress
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -77,6 +80,11 @@ def init_db() -> None:
                 duration_ms INTEGER NOT NULL,
                 client_ip TEXT,
                 country TEXT,
+                country_code TEXT,
+                region TEXT,
+                city TEXT,
+                latitude REAL,
+                longitude REAL,
                 user_agent TEXT,
                 browser TEXT,
                 referer TEXT
@@ -110,6 +118,24 @@ def init_db() -> None:
                 value TEXT NOT NULL
             )
             """)
+
+        # Lightweight migrations for existing DBs.
+        _ensure_column(conn, "request_log", "country_code", "TEXT")
+        _ensure_column(conn, "request_log", "region", "TEXT")
+        _ensure_column(conn, "request_log", "city", "TEXT")
+        _ensure_column(conn, "request_log", "latitude", "REAL")
+        _ensure_column(conn, "request_log", "longitude", "REAL")
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl_type: str) -> None:
+    try:
+        existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column in existing:
+            return
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    except Exception:
+        # Never block startup for analytics migrations.
+        return
 
 
 def _browser_family(user_agent: str | None) -> str:
@@ -157,6 +183,135 @@ def extract_country(headers: dict[str, str]) -> str | None:
             if value:
                 return value
     return None
+
+
+def _truthy_env(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    raw = raw.strip().lower()
+    if raw in {"1", "true", "yes", "y", "on"}:
+        return True
+    if raw in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _flag_emoji(country_code: str | None) -> str:
+    code = (country_code or "").strip().upper()
+    if len(code) != 2 or not code.isalpha():
+        return ""
+    return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
+
+
+def _normalize_ip(ip: str | None) -> str | None:
+    if not ip:
+        return None
+    s = ip.strip()
+    if not s:
+        return None
+    # Common case: IPv4 with port (e.g. "1.2.3.4:12345")
+    if re.match(r"^\d{1,3}(?:\.\d{1,3}){3}:\d+$", s):
+        s = s.split(":", 1)[0]
+    # Bracketed IPv6 with port: "[2001:db8::1]:1234"
+    if s.startswith("[") and "]:" in s:
+        s = s[1 : s.index("]")]
+    return s
+
+
+def _is_public_ip(ip: str | None) -> bool:
+    s = _normalize_ip(ip)
+    if not s:
+        return False
+    try:
+        obj = ipaddress.ip_address(s)
+    except Exception:
+        return False
+    # Skip private/loopback/link-local/etc.
+    return bool(getattr(obj, "is_global", False))
+
+
+_geoip_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+
+def _geoip_cache_ttl_seconds() -> int:
+    raw = os.environ.get("ANALYTICS_GEOIP_CACHE_TTL_SECONDS")
+    try:
+        if raw is None:
+            return 24 * 60 * 60
+        return max(60, int(raw))
+    except Exception:
+        return 24 * 60 * 60
+
+
+def _geoip_timeout_seconds() -> float:
+    raw = os.environ.get("ANALYTICS_GEOIP_TIMEOUT_SECONDS")
+    try:
+        if raw is None:
+            return 1.5
+        return max(0.2, float(raw))
+    except Exception:
+        return 1.5
+
+
+def _geoip_enabled() -> bool:
+    # Opt-in only: external IP → location lookup.
+    return _truthy_env("ANALYTICS_GEOIP_ENABLED", default=False)
+
+
+def _geoip_lookup_ipapi_co(ip: str) -> dict[str, Any] | None:
+    url = f"https://ipapi.co/{ip}/json/"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "schemaforms-analytics/1.0",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_geoip_timeout_seconds()) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None
+        if data.get("error"):
+            return None
+        return {
+            "country_code": data.get("country_code"),
+            "country": data.get("country_name"),
+            "region": data.get("region"),
+            "city": data.get("city"),
+            "latitude": data.get("latitude"),
+            "longitude": data.get("longitude"),
+        }
+    except Exception:
+        return None
+
+
+def geoip_enrich(client_ip: str | None) -> dict[str, Any] | None:
+    if not _geoip_enabled():
+        return None
+    ip = _normalize_ip(client_ip)
+    if not ip or not _is_public_ip(ip):
+        return None
+
+    now = time.time()
+    cached = _geoip_cache.get(ip)
+    if cached:
+        ts, value = cached
+        if (now - ts) <= _geoip_cache_ttl_seconds():
+            return value
+
+    value = _geoip_lookup_ipapi_co(ip)
+    _geoip_cache[ip] = (now, value)
+    # Prevent unbounded growth.
+    if len(_geoip_cache) > 10_000:
+        try:
+            for k in list(_geoip_cache.keys())[:2_000]:
+                _geoip_cache.pop(k, None)
+        except Exception:
+            _geoip_cache.clear()
+    return value
 
 
 def _iso(ts: datetime) -> str:
@@ -220,6 +375,30 @@ def record_request(
     referer: str | None,
 ) -> None:
     try:
+        normalized_ip = _normalize_ip(client_ip)
+
+        # Best-effort: convert a 2-letter country header into a country_code.
+        country_code = None
+        if country and isinstance(country, str):
+            maybe = country.strip().upper()
+            if len(maybe) == 2 and maybe.isalpha():
+                country_code = maybe
+
+        geo = geoip_enrich(normalized_ip)
+        if geo:
+            # Prefer richer GeoIP values.
+            country_code = (geo.get("country_code") or country_code) or None
+            country = (geo.get("country") or country) or None
+            region = geo.get("region")
+            city = geo.get("city")
+            latitude = geo.get("latitude")
+            longitude = geo.get("longitude")
+        else:
+            region = None
+            city = None
+            latitude = None
+            longitude = None
+
         with _connect() as conn:
             if _should_prune(conn):
                 _prune(conn)
@@ -229,8 +408,9 @@ def record_request(
                 """
                 INSERT INTO request_log(
                     ts, method, path, status_code, duration_ms,
-                    client_ip, country, user_agent, browser, referer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    client_ip, country, country_code, region, city, latitude, longitude,
+                    user_agent, browser, referer
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.strip(),
                 (
                     _iso(_utcnow()),
@@ -238,8 +418,13 @@ def record_request(
                     path,
                     int(status_code),
                     int(duration_ms),
-                    client_ip,
+                    normalized_ip,
                     country,
+                    country_code,
+                    region,
+                    city,
+                    latitude,
+                    longitude,
                     user_agent,
                     _browser_family(user_agent),
                     referer,
@@ -382,14 +567,37 @@ def get_recent_requests(*, limit: int = 200) -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT ts, method, path, status_code, duration_ms, client_ip, country, browser, referer
+            SELECT ts, method, path, status_code, duration_ms,
+                   client_ip, country, country_code, region, city, latitude, longitude,
+                   browser, referer
             FROM request_log
             ORDER BY id DESC
             LIMIT ?
             """.strip(),
             (int(limit),),
         ).fetchall()
-    return [dict(r) for r in rows]
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        d = dict(r)
+        cc = (d.get("country_code") or "").strip() or None
+        d["flag"] = _flag_emoji(cc)
+
+        parts: list[str] = []
+        city = (d.get("city") or "").strip()
+        region = (d.get("region") or "").strip()
+        country = (d.get("country") or "").strip()
+        if city:
+            parts.append(city)
+        if region and region not in parts:
+            parts.append(region)
+        if country:
+            parts.append(country)
+        if cc and cc not in parts and cc != country:
+            parts.append(cc)
+        d["location"] = ", ".join(parts)
+
+        out.append(d)
+    return out
 
 
 def get_recent_errors(*, limit: int = 200) -> list[dict[str, Any]]:

@@ -1,7 +1,7 @@
 [project]
 name = "demo-pydantic-schemaforms"
-version = "26.1.1.beta"
-requires-python = ">=3.12"
+version = "26.1.28.1"
+requires-python = ">=3.14"
 description = "Demo application showcasing pydantic-schemaforms library capabilities"
 readme = "README.md"
 dependencies = [ "fastapi[all]>=0.128.0", "pydantic>=2.7", "pydantic-schemaforms>=26.1.1b0", "pydantic-extra-types[all]>=2.10.6", "uvicorn>=0.40.0", "python-dotenv>=1.0.0",]
@@ -39,7 +39,7 @@ line_length = 100
 
 [tool.bumpcalver]
 version_format = "{current_date}.{build_count}"
-date_format = "%y.%-m"
+date_format = "%y.%-m.%-d"
 timezone = "America/New_York"
 git_tag = true
 auto_commit = false

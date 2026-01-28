@@ -1,7 +1,7 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.1.4b0
-PYTHON = python3
+APP_VERSION = 26.1.28.1
+PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
 
@@ -24,6 +24,11 @@ REQUIREMENTS_PATH = requirements.txt
 .PHONY: autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test
 
 
+check-python: ## Verify Python >= 3.14 is available
+	@$(PYTHON) -c "import sys; assert sys.version_info >= (3,14), f'Python >= 3.14 required (found {sys.version.split()[0]})'" 2>/dev/null \
+		|| (echo "ERROR: Python >= 3.14 is required. In the devcontainer, rebuild so python3.14 is available, then run: make install"; exit 2)
+
+
 autoflake: ## Remove unused imports and unused variables from Python code
 	autoflake --in-place --remove-all-unused-imports  --ignore-init-module-imports --remove-unused-variables -r $(SERVICE_PATH)
 	autoflake --in-place --remove-all-unused-imports  --ignore-init-module-imports --remove-unused-variables -r $(TESTS_PATH)
@@ -35,7 +40,7 @@ black: ## Reformat Python code to follow the Black code style
 	# black $(EXAMPLE_PATH)
 
 bump: ## Bump the version of the project
-	$(BUMPCALVER) --build --beta
+	$(BUMPCALVER) --build
 
 
 cleanup: isort ruff autoflake ## Run isort, ruff, autoflake
@@ -47,11 +52,13 @@ flake8: ## Run flake8 to check Python code for PEP8 compliance
 help:  ## Display this help message
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-install: ## Install the project's dependencie
+
+install: check-python ## Install the project's dependencie
 	$(PIP) install -r $(REQUIREMENTS_PATH)
 
 
-reinstall: ## Install the project's dependencie
+
+reinstall: check-python ## Install the project's dependencie
 	$(PIP) uninstall -r $(REQUIREMENTS_PATH) -y
 	$(PIP) install -r $(REQUIREMENTS_PATH)
 
@@ -82,11 +89,13 @@ ruff: ## Format Python code with Ruff
 	$(PYTHON) -m ruff check --fix --exit-non-zero-on-fix --show-fixes $(EXAMPLE_PATH)
 
 
-run: ## Run the demo FastAPI app (async implementation)
+
+run: check-python ## Run the demo FastAPI app (async implementation)
 	$(PYTHON) -m uvicorn src.main:app --host 127.0.0.1 --port $(PORT) --reload --log-level $(LOG_LEVEL)
 
 
-ex-run: ## Run the FastAPI example (async implementation)
+
+ex-run: check-python ## Run the FastAPI example (async implementation)
 	cd examples && $(PYTHON) -m uvicorn fastapi_example:app --port 5000 --reload --log-level $(LOG_LEVEL)
 
 

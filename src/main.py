@@ -1446,143 +1446,21 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
     recent = get_recent_requests(limit=min(max(limit, 1), 500))
     recent_errors = get_recent_errors(limit=50)
 
-    def _rows(items: list[dict], cols: list[str]) -> str:
-        html = []
-        for item in items:
-            tds = "".join(
-                f"<td>{(item.get(c) if item.get(c) is not None else '')}</td>" for c in cols
-            )
-            html.append(f"<tr>{tds}</tr>")
-        return "".join(html)
+    token_required = _dashboard_token_required() is not None
+    ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
 
-    top_paths_li = (
-        "".join(
-            f"<li><code>{p['path']}</code> — <strong>{p['count']}</strong></li>"
-            for p in summary.top_paths
-        )
-        or "<li>(none)</li>"
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "request": request,
+            "summary": summary,
+            "recent": recent,
+            "recent_errors": recent_errors,
+            "token_required": token_required,
+            "ttl_min": ttl_min,
+        },
     )
-    status_li = (
-        "".join(
-            f"<li><code>{s['status_code']}</code> — <strong>{s['count']}</strong></li>"
-            for s in summary.status_counts
-        )
-        or "<li>(none)</li>"
-    )
-    browser_li = (
-        "".join(
-            f"<li><code>{b['browser']}</code> — <strong>{b['count']}</strong></li>"
-            for b in summary.browser_counts
-        )
-        or "<li>(none)</li>"
-    )
-
-    token_hint = ""
-    if _dashboard_token_required():
-        ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
-        token_hint = (
-            "<p class='muted'>Protected by <code>DASHBOARD_TOKEN</code>. "
-            "Pass <code>?token=...</code> once to set a session cookie "
-            f"(~{ttl_min} min), or use <code>X-Dashboard-Token</code> header.</p>"
-        )
-
-    return HTMLResponse(f"""<!doctype html>
-<html lang='en'>
-<head>
-    <meta charset='utf-8' />
-    <meta name='viewport' content='width=device-width, initial-scale=1' />
-    <title>SchemaForms Dashboard</title>
-    <style>
-        body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111827; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 12px; }}
-        .card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; background: #fff; }}
-        .kpi {{ font-size: 28px; font-weight: 700; }}
-        .muted {{ color: #6b7280; font-size: 13px; }}
-        code {{ background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-        th, td {{ border-top: 1px solid #e5e7eb; padding: 8px 6px; text-align: left; vertical-align: top; }}
-        th {{ color: #374151; font-weight: 600; }}
-        .row {{ display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }}
-        a {{ color: #2563eb; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-    </style>
-</head>
-<body>
-    <div class='row'>
-        <h1 style='margin:0;'>Dashboard</h1>
-        <span class='muted'>since <code>{summary.since_iso}</code></span>
-    </div>
-    {token_hint}
-    <p class='muted'>Try: <a href='/dashboard?days=1'>1d</a> · <a href='/dashboard?days=7'>7d</a> · <a href='/dashboard?days=30'>30d</a></p>
-
-    <div class='grid'>
-        <div class='card'>
-            <div class='muted'>Requests</div>
-            <div class='kpi'>{summary.total_requests}</div>
-        </div>
-        <div class='card'>
-            <div class='muted'>Unique IPs</div>
-            <div class='kpi'>{summary.unique_ips}</div>
-        </div>
-        <div class='card'>
-            <div class='muted'>Avg latency</div>
-            <div class='kpi'>{summary.avg_duration_ms} ms</div>
-        </div>
-    </div>
-
-    <div class='grid'>
-        <div class='card'>
-            <div class='muted'>Top paths</div>
-            <ul style='margin: 10px 0 0; padding-left: 18px;'>{top_paths_li}</ul>
-        </div>
-        <div class='card'>
-            <div class='muted'>Status codes</div>
-            <ul style='margin: 10px 0 0; padding-left: 18px;'>{status_li}</ul>
-        </div>
-        <div class='card'>
-            <div class='muted'>Browsers</div>
-            <ul style='margin: 10px 0 0; padding-left: 18px;'>{browser_li}</ul>
-        </div>
-    </div>
-
-    <div class='card' style='margin-top: 16px;'>
-        <div class='row' style='justify-content: space-between;'>
-            <h2 style='margin:0; font-size: 16px;'>Recent requests</h2>
-            <span class='muted'>JSON: <a href='/api/analytics/requests?limit=200'>/api/analytics/requests</a></span>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>ts</th><th>method</th><th>path</th><th>status</th><th>ms</th><th>ip</th><th>browser</th>
-                </tr>
-            </thead>
-            <tbody>
-                {_rows(recent, ['ts','method','path','status_code','duration_ms','client_ip','browser'])}
-            </tbody>
-        </table>
-    </div>
-
-    <div class='card' style='margin-top: 16px;'>
-        <div class='row' style='justify-content: space-between;'>
-            <h2 style='margin:0; font-size: 16px;'>Recent errors</h2>
-            <span class='muted'>JSON: <a href='/api/analytics/errors?limit=200'>/api/analytics/errors</a></span>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>ts</th><th>kind</th><th>message</th><th>path</th><th>status</th><th>ip</th>
-                </tr>
-            </thead>
-            <tbody>
-                {_rows(recent_errors, ['ts','kind','message','path','status_code','client_ip'])}
-            </tbody>
-        </table>
-    </div>
-
-    <p class='muted' style='margin-top: 18px;'>DB: <code>ANALYTICS_DB_PATH</code> (default: /tmp/schemaforms_analytics.sqlite) · retention: <code>ANALYTICS_RETENTION_DAYS</code> (default: 7)</p>
-    <p class='muted'><a href='/'>Back to app</a> · <a href='/dashboard/logout'>Logout</a></p>
-</body>
-</html>""")
 
 
 @app.get("/dashboard/logout")
