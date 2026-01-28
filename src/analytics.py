@@ -61,6 +61,11 @@ def _connect() -> sqlite3.Connection:
 
     conn = sqlite3.connect(db_path, timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
+    # Wait a bit for locks instead of failing fast (common on multi-worker startup).
+    try:
+        conn.execute("PRAGMA busy_timeout=5000")
+    except Exception:
+        pass
     # Improve concurrency with multiple workers.
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -69,62 +74,73 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    with _connect() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS request_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL,
-                method TEXT NOT NULL,
-                path TEXT NOT NULL,
-                status_code INTEGER NOT NULL,
-                duration_ms INTEGER NOT NULL,
-                client_ip TEXT,
-                country TEXT,
-                country_code TEXT,
-                region TEXT,
-                city TEXT,
-                latitude REAL,
-                longitude REAL,
-                user_agent TEXT,
-                browser TEXT,
-                referer TEXT
-            )
-            """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_request_log_path ON request_log(path)")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_request_log_status ON request_log(status_code)"
-        )
+    # Multiple workers can race on first-time initialization.
+    # Retry a few times rather than failing startup.
+    for attempt in range(10):
+        try:
+            with _connect() as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS request_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts TEXT NOT NULL,
+                        method TEXT NOT NULL,
+                        path TEXT NOT NULL,
+                        status_code INTEGER NOT NULL,
+                        duration_ms INTEGER NOT NULL,
+                        client_ip TEXT,
+                        country TEXT,
+                        country_code TEXT,
+                        region TEXT,
+                        city TEXT,
+                        latitude REAL,
+                        longitude REAL,
+                        user_agent TEXT,
+                        browser TEXT,
+                        referer TEXT
+                    )
+                    """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_request_log_ts ON request_log(ts)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_request_log_path ON request_log(path)")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_request_log_status ON request_log(status_code)"
+                )
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS error_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                message TEXT NOT NULL,
-                detail TEXT,
-                path TEXT,
-                method TEXT,
-                status_code INTEGER,
-                client_ip TEXT,
-                user_agent TEXT
-            )
-            """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_error_log_ts ON error_log(ts)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS error_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        detail TEXT,
+                        path TEXT,
+                        method TEXT,
+                        status_code INTEGER,
+                        client_ip TEXT,
+                        user_agent TEXT
+                    )
+                    """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_error_log_ts ON error_log(ts)")
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-            """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS meta (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                    """)
 
-        # Lightweight migrations for existing DBs.
-        _ensure_column(conn, "request_log", "country_code", "TEXT")
-        _ensure_column(conn, "request_log", "region", "TEXT")
-        _ensure_column(conn, "request_log", "city", "TEXT")
-        _ensure_column(conn, "request_log", "latitude", "REAL")
-        _ensure_column(conn, "request_log", "longitude", "REAL")
+                # Lightweight migrations for existing DBs.
+                _ensure_column(conn, "request_log", "country_code", "TEXT")
+                _ensure_column(conn, "request_log", "region", "TEXT")
+                _ensure_column(conn, "request_log", "city", "TEXT")
+                _ensure_column(conn, "request_log", "latitude", "REAL")
+                _ensure_column(conn, "request_log", "longitude", "REAL")
+            return
+        except sqlite3.OperationalError as ex:
+            if "database is locked" not in str(ex).lower():
+                return
+            time.sleep(0.05 * (attempt + 1))
+        except Exception:
+            return
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl_type: str) -> None:
@@ -410,7 +426,7 @@ def record_request(
                     ts, method, path, status_code, duration_ms,
                     client_ip, country, country_code, region, city, latitude, longitude,
                     user_agent, browser, referer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.strip(),
                 (
                     _iso(_utcnow()),

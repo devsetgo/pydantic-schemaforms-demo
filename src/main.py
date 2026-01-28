@@ -103,7 +103,11 @@ _load_dotenv_if_present()
 
 @app.on_event("startup")
 async def _startup_init_analytics() -> None:
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        # Analytics must never prevent the app from starting.
+        return
 
 
 def _dashboard_token_required() -> str | None:
