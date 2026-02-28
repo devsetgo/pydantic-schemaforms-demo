@@ -83,6 +83,8 @@ def init_db() -> None:
                     CREATE TABLE IF NOT EXISTS request_log (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         ts TEXT NOT NULL,
+                        request_id TEXT,
+                        user_id TEXT,
                         method TEXT NOT NULL,
                         path TEXT NOT NULL,
                         status_code INTEGER NOT NULL,
@@ -109,6 +111,8 @@ def init_db() -> None:
                     CREATE TABLE IF NOT EXISTS error_log (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         ts TEXT NOT NULL,
+                        request_id TEXT,
+                        user_id TEXT,
                         kind TEXT NOT NULL,
                         message TEXT NOT NULL,
                         detail TEXT,
@@ -129,11 +133,16 @@ def init_db() -> None:
                     """)
 
                 # Lightweight migrations for existing DBs.
+                _ensure_column(conn, "request_log", "request_id", "TEXT")
+                _ensure_column(conn, "request_log", "user_id", "TEXT")
                 _ensure_column(conn, "request_log", "country_code", "TEXT")
                 _ensure_column(conn, "request_log", "region", "TEXT")
                 _ensure_column(conn, "request_log", "city", "TEXT")
                 _ensure_column(conn, "request_log", "latitude", "REAL")
                 _ensure_column(conn, "request_log", "longitude", "REAL")
+
+                _ensure_column(conn, "error_log", "request_id", "TEXT")
+                _ensure_column(conn, "error_log", "user_id", "TEXT")
             return
         except sqlite3.OperationalError as ex:
             if "database is locked" not in str(ex).lower():
@@ -381,6 +390,8 @@ def _prune(conn: sqlite3.Connection) -> None:
 
 def record_request(
     *,
+    request_id: str | None = None,
+    user_id: str | None = None,
     method: str,
     path: str,
     status_code: int,
@@ -423,13 +434,15 @@ def record_request(
             conn.execute(
                 """
                 INSERT INTO request_log(
-                    ts, method, path, status_code, duration_ms,
+                    ts, request_id, user_id, method, path, status_code, duration_ms,
                     client_ip, country, country_code, region, city, latitude, longitude,
                     user_agent, browser, referer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.strip(),
                 (
                     _iso(_utcnow()),
+                    request_id,
+                    user_id,
                     method,
                     path,
                     int(status_code),
@@ -453,6 +466,8 @@ def record_request(
 
 def record_error(
     *,
+    request_id: str | None = None,
+    user_id: str | None = None,
     kind: str,
     message: str,
     detail: str | None = None,
@@ -471,12 +486,14 @@ def record_error(
             conn.execute(
                 """
                 INSERT INTO error_log(
-                    ts, kind, message, detail,
+                    ts, request_id, user_id, kind, message, detail,
                     path, method, status_code, client_ip, user_agent
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.strip(),
                 (
                     _iso(_utcnow()),
+                    request_id,
+                    user_id,
                     kind,
                     message,
                     detail,
@@ -583,7 +600,7 @@ def get_recent_requests(*, limit: int = 200) -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT ts, method, path, status_code, duration_ms,
+            SELECT ts, request_id, user_id, method, path, status_code, duration_ms,
                    client_ip, country, country_code, region, city, latitude, longitude,
                    browser, referer
             FROM request_log
@@ -620,7 +637,7 @@ def get_recent_errors(*, limit: int = 200) -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT ts, kind, message, detail, path, method, status_code, client_ip
+            SELECT ts, request_id, user_id, kind, message, detail, path, method, status_code, client_ip
             FROM error_log
             ORDER BY id DESC
             LIMIT ?

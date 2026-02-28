@@ -21,7 +21,7 @@ LOG_LEVEL = debug
 
 REQUIREMENTS_PATH = requirements.txt
 
-.PHONY: autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test
+.PHONY: autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
 
 
 check-python: ## Verify Python >= 3.14 is available
@@ -81,6 +81,10 @@ test: ## Run the project's tests (linting + pytest + coverage badges)
 	$(PYTHON) -c "print(f'✨ Tests complete. Badges updated. Total time: {$$end - $$start:.2f} seconds')"
 
 tests: test ## Alias for 'test' - Run the project's tests
+
+
+smoke-live: ## Run live-server smoke test against a running app on localhost
+	$(PYTHON) scripts/smoke_live_server.py --base-url http://localhost:$(PORT)
 
 
 ruff: ## Format Python code with Ruff
