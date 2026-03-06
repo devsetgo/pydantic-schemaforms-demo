@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import asyncio
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
@@ -88,6 +89,40 @@ app = FastAPI(
 )
 
 
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+async def robots_txt(request: Request) -> PlainTextResponse:
+    base = str(request.base_url).rstrip("/")
+    body = "\n".join(
+        [
+            "User-agent: *",
+            "Disallow: /api/",
+            "Disallow: /docs",
+            "Disallow: /openapi.json",
+            "Disallow: /dashboard",
+            "Disallow: /static/",
+            "Allow: /",
+            "",
+            f"# Host: {base}",
+        ]
+    )
+    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/security", response_class=PlainTextResponse, include_in_schema=False)
+async def security_notice() -> PlainTextResponse:
+    body = "\n".join(
+        [
+            "Nothing to see here.",
+            "",
+            "If you are scanning for exposed logs/.env/credentials: this demo app does not store them under the web root.",
+            "Please stop probing random paths.",
+            "",
+            "(Legit issue? Contact the site owner.)",
+        ]
+    )
+    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
+
+
 def _load_dotenv_if_present() -> None:
     """Load a local .env file if present.
 
@@ -156,6 +191,112 @@ def _configure_logging() -> logging.Logger:
 
 
 logger = _configure_logging()
+
+
+def _antihack_enabled() -> bool:
+    raw = (os.environ.get("ANTISCAN_ENABLED") or "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _antihack_redirect_url() -> str | None:
+    raw = os.environ.get("ANTISCAN_REDIRECT_URL")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    return raw or None
+
+
+def _antihack_tarpit_seconds() -> float | None:
+    raw = os.environ.get("ANTISCAN_TARPIT_SECONDS")
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except Exception:
+        return None
+    if v <= 0:
+        return None
+    # Safety cap: holding connections open for too long can self-DoS.
+    return min(v, 600.0)
+
+
+def _antihack_max_inflight_per_ip() -> int:
+    raw = os.environ.get("ANTISCAN_MAX_INFLIGHT_PER_IP")
+    try:
+        if raw is None:
+            return 1
+        return max(1, int(raw))
+    except Exception:
+        return 1
+
+
+def _looks_like_scan_path(path: str) -> bool:
+    p = (path or "/").strip()
+    if not p.startswith("/"):
+        p = "/" + p
+    p_low = p.lower()
+
+    # Keep false positives low: match known scanner probes.
+    prefixes = (
+        "/.aws/",
+        "/aws/",
+        "/.git",
+        "/.hg",
+        "/.svn",
+        "/.circleci/",
+        "/.travis",
+        "/.bitbucket/",
+        "/.env",
+        "/wp-",
+        "/phpmyadmin",
+        "/_profiler",
+        "/app_dev.php",
+        "/server-status",
+        "/server-info",
+        "/cgi-bin/",
+        "/horizon/",
+        "/storage/logs/",
+        "/vendor/",
+        "/debug",
+        "/manage/env",
+    )
+    if p_low.startswith(prefixes):
+        return True
+
+    # File probes.
+    if p_low in {"/phpinfo", "/phpinfo.php", "/info.php", "/test.php", "/error.log", "/debug.log"}:
+        return True
+
+    # Common sensitive file extensions.
+    if re.search(r"\.(?:php|asp|aspx|jsp|cgi|pl|sh|bak|old|swp)$", p_low):
+        return True
+
+    # Obvious secret/config filenames.
+    if re.search(r"(?:secret|credential|config|settings)\.(?:ya?ml|json|ini|env)$", p_low):
+        return True
+
+    return False
+
+
+# Simple in-memory tarpit/block for scanners.
+# Note: per-process only (fine for a demo; use a reverse proxy/WAF for production).
+_abuse_state: dict[str, dict[str, float]] = {}
+
+
+def _abuse_key(request: Request) -> str:
+    ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
+    ip = (ip or "unknown").strip() or "unknown"
+    return ip
+
+
+def _abuse_gc(now: float) -> None:
+    # Best-effort cleanup: drop entries not seen in ~1h.
+    try:
+        for k in list(_abuse_state.keys()):
+            if (now - float(_abuse_state[k].get("last", 0.0))) > 3600:
+                _abuse_state.pop(k, None)
+    except Exception:
+        return
 
 
 def _user_id_cookie_name() -> str:
@@ -297,6 +438,88 @@ async def analytics_middleware(request: Request, call_next):
     # Keep noise down.
     if path.startswith("/static") or path in {"/favicon.ico"}:
         return await call_next(request)
+
+    # Inconvenience obvious scanner probes without impacting legitimate 404s.
+    if _antihack_enabled() and _looks_like_scan_path(path):
+        now = time.time()
+        key = _abuse_key(request)
+        state = _abuse_state.get(key) or {"score": 0.0, "last": now, "blocked_until": 0.0}
+
+        # Limit concurrent tarpits per IP to avoid tying up the server.
+        inflight = int(float(state.get("inflight", 0.0) or 0.0))
+        max_inflight = _antihack_max_inflight_per_ip()
+        if inflight >= max_inflight:
+            state.update({"last": now, "inflight": float(inflight)})
+            _abuse_state[key] = state
+            _abuse_gc(now)
+            return PlainTextResponse(
+                content="Too Many Requests",
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+
+        state["inflight"] = float(inflight + 1)
+        _abuse_state[key] = state
+
+        try:
+            # Decay score over time to avoid permanent penalty.
+            last = float(state.get("last", now))
+            score = float(state.get("score", 0.0))
+            score = max(0.0, score - (now - last) * 0.35)
+
+            score += 2.0
+            blocked_until = float(state.get("blocked_until", 0.0))
+            if blocked_until and now < blocked_until:
+                state.update({"score": score, "last": now, "blocked_until": blocked_until})
+                _abuse_state[key] = state
+                _abuse_gc(now)
+                return PlainTextResponse(
+                    content="Too Many Requests",
+                    status_code=429,
+                    headers={"Retry-After": str(int(max(1, blocked_until - now)))}
+                )
+
+            if score >= 14.0:
+                blocked_until = now + 60 * 30
+                state.update({"score": score, "last": now, "blocked_until": blocked_until})
+                _abuse_state[key] = state
+                _abuse_gc(now)
+                return PlainTextResponse(
+                    content="Too Many Requests",
+                    status_code=429,
+                    headers={"Retry-After": "1800"},
+                )
+
+            # Tarpit: either a configured long delay, or a small delay that grows with score.
+            forced = _antihack_tarpit_seconds()
+            delay = float(forced) if forced is not None else min(1.25, 0.05 * (score ** 1.35))
+
+            state.update({"score": score, "last": now, "blocked_until": 0.0})
+            _abuse_state[key] = state
+            _abuse_gc(now)
+            try:
+                await asyncio.sleep(delay)
+            except Exception:
+                pass
+
+            redirect_url = _antihack_redirect_url() or "/security"
+            # If you set a redirect URL, keep it explicit and small.
+            # Avoid huge downloads or third-party sites (wastes bandwidth and can backfire).
+            if redirect_url:
+                try:
+                    return RedirectResponse(url=redirect_url, status_code=302)
+                except Exception:
+                    pass
+
+            return PlainTextResponse(content="Not Found", status_code=404)
+        finally:
+            try:
+                s = _abuse_state.get(key) or state
+                cur = int(float(s.get("inflight", 1.0) or 1.0))
+                s["inflight"] = float(max(0, cur - 1))
+                _abuse_state[key] = s
+            except Exception:
+                pass
 
     try:
         response = await call_next(request)
