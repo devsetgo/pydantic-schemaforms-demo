@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.2.27.1
+APP_VERSION = 26.3.6.1
 PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
@@ -21,7 +21,15 @@ LOG_LEVEL = debug
 
 REQUIREMENTS_PATH = requirements.txt
 
-.PHONY: autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
+# Container publishing
+# Override these at call time, e.g.:
+#   make docker-push DOCKER_REPO=myuser/$(REPONAME)
+DOCKER_REGISTRY ?= docker.io
+DOCKER_REPO ?= mikeryan56/$(REPONAME)
+
+.PHONY: alembic-revision alembic-upgrade autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
+
+ALEMBIC_REV_ID = $(subst .,_,$(APP_VERSION))
 
 
 check-python: ## Verify Python >= 3.14 is available
@@ -109,13 +117,31 @@ kill:  # Kill any process running on the app port
 	@echo "Port ${PORT} is now free"
 
 docker-build: ## Build the Docker image for the demo app
+	@echo "🔁 Alembic smoke-test (best-effort) (APP_VERSION=$(APP_VERSION))..."
+	@$(PYTHON) -c "import alembic" >/dev/null 2>&1 \
+		&& (ANALYTICS_DB_PATH=/tmp/schemaforms_alembic_smoke.sqlite $(PYTHON) -m alembic -c alembic.ini upgrade head && rm -f /tmp/schemaforms_alembic_smoke.sqlite) \
+		|| echo "(skipped) alembic not installed in host Python; Docker build will smoke-test migrations inside the image"
 	docker build --no-cache -t $(REPONAME):${APP_VERSION} .
 
 docker-push: ## Push the Docker image to Docker Hub
-	docker tag $(REPONAME):${APP_VERSION} mikeryan56/$(REPONAME):${APP_VERSION}
-	docker push mikeryan56/$(REPONAME):${APP_VERSION}
+	docker tag $(REPONAME):${APP_VERSION} $(DOCKER_REGISTRY)/$(DOCKER_REPO):${APP_VERSION}
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO):${APP_VERSION}
 
 docker-run: ## Run the Docker container for the demo app
-	docker run -d -p $(PORT):$(PORT) --name $(REPONAME)_container $(REPONAME):${APP_VERSION}
+	docker run -d \
+		-p $(PORT):$(PORT) \
+		-v $(SQLITE_PATH):/data \
+		-e ANALYTICS_DB_PATH=/data/schemaforms_analytics.sqlite \
+		-e IP_GEO_ENABLED=1 \
+		-e IP_GEO_WORKER_ENABLED=1 \
+		-e IP_GEO_RATE_LIMIT_PER_MIN=40 \
+		--name $(REPONAME)_container \
+		$(REPONAME):${APP_VERSION}
+
+alembic-upgrade: ## Run Alembic migrations against ANALYTICS_DB_PATH
+	$(PYTHON) -m alembic -c alembic.ini upgrade head
+
+alembic-revision: ## Create an Alembic revision named by APP_VERSION
+	$(PYTHON) -m alembic -c alembic.ini revision -m "$(APP_VERSION)" --rev-id "$(ALEMBIC_REV_ID)"
 
 docker-deploy: docker-build docker-push ## Build, push, and run the Docker container for the demo app

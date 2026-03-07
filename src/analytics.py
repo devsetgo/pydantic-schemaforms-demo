@@ -40,8 +40,9 @@ def _parse_int(value: str | None, default: int) -> int:
 
 
 def get_db_path() -> str:
-    # Default to /tmp so it works in containers without extra volumes.
-    return os.environ.get("ANALYTICS_DB_PATH", "/tmp/schemaforms_analytics.sqlite")
+    # Default to a durable local path.
+    # Docker sets ANALYTICS_DB_PATH to /data/... via scripts/docker_entrypoint.sh.
+    return os.environ.get("ANALYTICS_DB_PATH", "./data/schemaforms_analytics.sqlite")
 
 
 def get_retention_days() -> int:
@@ -411,20 +412,33 @@ def record_request(
             if len(maybe) == 2 and maybe.isalpha():
                 country_code = maybe
 
-        geo = geoip_enrich(normalized_ip)
-        if geo:
-            # Prefer richer GeoIP values.
-            country_code = (geo.get("country_code") or country_code) or None
-            country = (geo.get("country") or country) or None
-            region = geo.get("region")
-            city = geo.get("city")
-            latitude = geo.get("latitude")
-            longitude = geo.get("longitude")
-        else:
-            region = None
-            city = None
-            latitude = None
-            longitude = None
+        # GeoIP is now async + queued (never block requests on external I/O).
+        # Best-effort: read from DB cache; if missing, enqueue for background lookup.
+        region = None
+        city = None
+        latitude = None
+        longitude = None
+        try:
+            if not _truthy_env("IP_GEO_ENABLED", default=False):
+                raise RuntimeError("ip_geo_disabled")
+
+            from .ip_geo_store import enqueue_ip, get_cached_geo
+
+            geo_row = get_cached_geo(normalized_ip or "") if normalized_ip else None
+            if geo_row:
+                country = (geo_row.country or country) or None
+                country_code = (geo_row.country_code or country_code) or None
+                region = geo_row.region
+                city = geo_row.city
+                latitude = geo_row.latitude
+                longitude = geo_row.longitude
+            else:
+                # Only queue lookups for public/global IPs.
+                if normalized_ip and _is_public_ip(normalized_ip):
+                    enqueue_ip(normalized_ip)
+        except Exception:
+            # Never break the request path.
+            pass
 
         with _connect() as conn:
             if _should_prune(conn):
@@ -598,17 +612,45 @@ def get_summary(*, days: int = 1, top_n: int = 10) -> AnalyticsSummary:
 
 def get_recent_requests(*, limit: int = 200) -> list[dict[str, Any]]:
     with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT ts, request_id, user_id, method, path, status_code, duration_ms,
-                   client_ip, country, country_code, region, city, latitude, longitude,
-                   browser, referer
-            FROM request_log
-            ORDER BY id DESC
-            LIMIT ?
-            """.strip(),
-            (int(limit),),
-        ).fetchall()
+        try:
+            # Prefer geo data from the persistent cache if available.
+            now_iso = _iso(_utcnow())
+            rows = conn.execute(
+                """
+                SELECT rl.ts, rl.request_id, rl.user_id, rl.method, rl.path, rl.status_code, rl.duration_ms,
+                       rl.client_ip,
+                       COALESCE(rl.country, ig.country) AS country,
+                       COALESCE(rl.country_code, ig.country_code) AS country_code,
+                       COALESCE(rl.region, ig.region) AS region,
+                       COALESCE(rl.city, ig.city) AS city,
+                       COALESCE(rl.latitude, ig.lat) AS latitude,
+                       COALESCE(rl.longitude, ig.lon) AS longitude,
+                       ig.fetched_at AS ip_geo_fetched_at,
+                       ig.expires_at AS ip_geo_expires_at,
+                       ig.provider AS ip_geo_provider,
+                       ig.raw_json AS ip_geo_raw_json,
+                       rl.browser, rl.referer
+                FROM request_log AS rl
+                LEFT JOIN ip_geo_cache AS ig
+                  ON ig.ip = rl.client_ip AND ig.expires_at > ?
+                ORDER BY rl.id DESC
+                LIMIT ?
+                """.strip(),
+                (now_iso, int(limit)),
+            ).fetchall()
+        except Exception:
+            # Fallback if ip_geo_cache isn't present yet.
+            rows = conn.execute(
+                """
+                SELECT ts, request_id, user_id, method, path, status_code, duration_ms,
+                       client_ip, country, country_code, region, city, latitude, longitude,
+                       browser, referer
+                FROM request_log
+                ORDER BY id DESC
+                LIMIT ?
+                """.strip(),
+                (int(limit),),
+            ).fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
         d = dict(r)
@@ -628,6 +670,29 @@ def get_recent_requests(*, limit: int = 200) -> list[dict[str, Any]]:
         if cc and cc not in parts and cc != country:
             parts.append(cc)
         d["location"] = ", ".join(parts)
+
+        # Tooltip shown on IP hover in the dashboard.
+        try:
+            raw = (d.get("ip_geo_raw_json") or "").strip()
+            # Keep tooltips reasonable.
+            if len(raw) > 800:
+                raw = raw[:800] + "…"
+
+            tooltip_parts: list[str] = []
+            if d.get("ip_geo_provider"):
+                tooltip_parts.append(f"provider={d.get('ip_geo_provider')}")
+            if d.get("ip_geo_fetched_at"):
+                tooltip_parts.append(f"fetched_at={d.get('ip_geo_fetched_at')}")
+            if d.get("ip_geo_expires_at"):
+                tooltip_parts.append(f"expires_at={d.get('ip_geo_expires_at')}")
+            if d.get("location"):
+                tooltip_parts.append(f"location={d.get('location')}")
+            if raw:
+                tooltip_parts.append(f"raw_json={raw}")
+
+            d["ip_geo_tooltip"] = " | ".join(str(p) for p in tooltip_parts if p)
+        except Exception:
+            d["ip_geo_tooltip"] = ""
 
         out.append(d)
     return out
@@ -652,3 +717,87 @@ def purge_all() -> None:
         conn.execute("DELETE FROM request_log")
         conn.execute("DELETE FROM error_log")
         conn.execute("DELETE FROM meta")
+
+
+def get_ip_geo_queue_status() -> dict[str, Any]:
+    """Best-effort view of the IP geo queue/worker state.
+
+    This is used by the dashboard and must never raise.
+    """
+
+    try:
+        now_iso = _iso(_utcnow())
+        with _connect() as conn:
+            # If tables don't exist yet (migrations not applied), just return empty.
+            existing = {
+                r["name"]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ip_geo_%'"
+                ).fetchall()
+            }
+            if "ip_geo_queue" not in existing:
+                return {
+                    "available": False,
+                    "pending": 0,
+                    "in_progress": 0,
+                    "error": 0,
+                    "done": 0,
+                    "due_now": 0,
+                    "leader": None,
+                }
+
+            counts = {
+                r["status"]: int(r["count"]) for r in conn.execute(
+                    """
+                    SELECT status, COUNT(*) AS count
+                    FROM ip_geo_queue
+                    GROUP BY status
+                    """.strip()
+                ).fetchall()
+            }
+
+            due_now = conn.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM ip_geo_queue
+                WHERE status IN ('pending','error') AND next_attempt_at <= ?
+                """.strip(),
+                (now_iso,),
+            ).fetchone()
+
+            leader = None
+            if "ip_geo_leader_lock" in existing:
+                row = conn.execute(
+                    """
+                    SELECT lock_key, locked_by, locked_until, updated_at
+                    FROM ip_geo_leader_lock
+                    WHERE lock_key='ip_geo_worker'
+                    """.strip()
+                ).fetchone()
+                if row:
+                    leader = {
+                        "locked_by": row["locked_by"],
+                        "locked_until": row["locked_until"],
+                        "updated_at": row["updated_at"],
+                        "expired": bool(row["locked_until"] < now_iso),
+                    }
+
+        return {
+            "available": True,
+            "pending": int(counts.get("pending", 0)),
+            "in_progress": int(counts.get("in_progress", 0)),
+            "error": int(counts.get("error", 0)),
+            "done": int(counts.get("done", 0)),
+            "due_now": int(due_now["c"] if due_now else 0),
+            "leader": leader,
+        }
+    except Exception:
+        return {
+            "available": False,
+            "pending": 0,
+            "in_progress": 0,
+            "error": 0,
+            "done": 0,
+            "due_now": 0,
+            "leader": None,
+        }

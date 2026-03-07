@@ -9,6 +9,8 @@ RUN apt-get update \
         sudo \
         git \
         build-essential \
+        docker-cli \
+        docker-buildx \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -ms /bin/bash mike \
     && echo "mike ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers

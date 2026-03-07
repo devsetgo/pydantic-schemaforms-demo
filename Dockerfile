@@ -24,6 +24,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY examples/ ./examples/
 
+# Alembic migrations
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+COPY scripts/docker_entrypoint.sh ./scripts/docker_entrypoint.sh
+RUN chmod +x ./scripts/docker_entrypoint.sh
+
+# Build-time migration smoke-test (uses a temp DB inside the image).
+RUN ANALYTICS_DB_PATH=/tmp/alembic_smoke.sqlite python -m alembic -c alembic.ini upgrade head \
+    && rm -f /tmp/alembic_smoke.sqlite
+
+# Persist analytics DB in a volume by default.
+VOLUME ["/data"]
+
 # Expose the port the app runs on
 EXPOSE 5000
 
@@ -31,5 +44,5 @@ EXPOSE 5000
 # HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 #     CMD python -c "import requests; requests.get('http://localhost:5000/', timeout=5)"
 
-# Run the application
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
+# Run the application (includes runtime migrations).
+CMD ["./scripts/docker_entrypoint.sh"]

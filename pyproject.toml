@@ -1,10 +1,10 @@
 [project]
 name = "demo-pydantic-schemaforms"
-version = "26.2.27.1"
+version = "26.3.6.1"
 requires-python = ">=3.14"
 description = "Demo application showcasing pydantic-schemaforms library capabilities"
 readme = "README.md"
-dependencies = [ "fastapi[all]>=0.128.0", "pydantic>=2.7", "pydantic-schemaforms>=26.1.1b0", "pydantic-extra-types[all]>=2.10.6", "uvicorn>=0.40.0", "python-dotenv>=1.0.0",]
+dependencies = [ "fastapi[all]>=0.128.0", "pydantic>=2.7", "pydantic-schemaforms>=26.1.1b0", "pydantic-extra-types[all]>=2.10.6", "uvicorn>=0.40.0", "python-dotenv>=1.0.0", "alembic>=1.15.0", "sqlalchemy>=2.0.0",]
 [[project.authors]]
 name = "Mike Ryan"
 

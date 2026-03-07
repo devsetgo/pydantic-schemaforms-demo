@@ -53,6 +53,8 @@ from .models import (
 from .analytics import (
     extract_client_ip,
     extract_country,
+    get_db_path,
+    get_ip_geo_queue_status,
     get_recent_errors,
     get_recent_requests,
     get_summary,
@@ -61,6 +63,8 @@ from .analytics import (
     record_error,
     record_request,
 )
+
+from .ip_geo_worker import ip_geo_enabled, ip_geo_worker_enabled, run_ip_geo_worker
 
 # ============================================================================
 # APP SETUP
@@ -348,13 +352,48 @@ async def _startup_init_analytics() -> None:
         # Analytics must never prevent the app from starting.
         return
 
+    # IP geo lookup runs as a background task (single-leader across workers).
+    try:
+        if ip_geo_enabled() and ip_geo_worker_enabled():
+            stop_event = asyncio.Event()
+            task = asyncio.create_task(run_ip_geo_worker(stop_event=stop_event))
+            app.state.ip_geo_stop_event = stop_event
+            app.state.ip_geo_task = task
+    except Exception:
+        # Never block startup for this optional feature.
+        return
 
-def _dashboard_token_required() -> str | None:
-    token = os.environ.get("DASHBOARD_TOKEN")
-    if token is None:
-        return None
-    token = token.strip()
-    return token or None
+
+@app.on_event("shutdown")
+async def _shutdown_ip_geo_worker() -> None:
+    try:
+        stop_event = getattr(app.state, "ip_geo_stop_event", None)
+        task = getattr(app.state, "ip_geo_task", None)
+        if stop_event is not None:
+            try:
+                stop_event.set()
+            except Exception:
+                pass
+        if task is not None:
+            try:
+                task.cancel()
+            except Exception:
+                pass
+    except Exception:
+        return
+
+
+def _dashboard_token_required() -> str:
+    """Return the required dashboard token.
+
+    Security posture: fail closed.
+    - If DASHBOARD_TOKEN is not configured, dashboards/APIs must not be public.
+    """
+
+    token = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="DASHBOARD_TOKEN must be set")
+    return token
 
 
 def _dashboard_cookie_name() -> str:
@@ -387,8 +426,9 @@ def _token_from_request(request: Request) -> str:
 
 
 def _maybe_set_dashboard_cookie_from_token(request: Request, response: Response) -> None:
-    required = _dashboard_token_required()
-    if not required:
+    try:
+        required = _dashboard_token_required()
+    except HTTPException:
         return
 
     presented = _token_from_request(request)
@@ -411,8 +451,6 @@ def _maybe_set_dashboard_cookie_from_token(request: Request, response: Response)
 
 def _require_dashboard_auth(request: Request) -> None:
     required = _dashboard_token_required()
-    if not required:
-        return
 
     # Allow either header auth, query param, or an HttpOnly cookie.
     presented = _token_from_request(request)
@@ -2174,11 +2212,79 @@ async def api_analytics_errors(request: Request, limit: int = 200):
     return {"errors": get_recent_errors(limit=min(max(limit, 1), 1000))}
 
 
+@app.get("/api/analytics/ip-geo", tags=["Analytics"])
+async def api_analytics_ip_geo(request: Request):
+    _require_dashboard_auth(request)
+    return {"ip_geo": get_ip_geo_queue_status()}
+
+
 @app.post("/api/analytics/purge", tags=["Analytics"])
 async def api_analytics_purge(request: Request):
     _require_dashboard_auth(request)
     purge_all()
     return {"status": "ok"}
+
+
+@app.get("/central", response_class=HTMLResponse, tags=["Analytics"])
+async def central_dashboard(request: Request):
+    # Same token-to-cookie flow as /dashboard.
+    required = _dashboard_token_required()
+    presented = _token_from_request(request)
+    if presented:
+        if presented != required:
+            raise HTTPException(status_code=401, detail="Dashboard token required")
+
+        params = dict(request.query_params)
+        params.pop("token", None)
+        query = "&".join(f"{k}={v}" for k, v in params.items() if v is not None and v != "")
+        url = "/central" + (f"?{query}" if query else "")
+
+        resp = RedirectResponse(url=url, status_code=303)
+        _maybe_set_dashboard_cookie_from_token(request, resp)
+        return resp
+
+    _require_dashboard_auth(request)
+
+    ip_geo = get_ip_geo_queue_status()
+    token_required = True
+    ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
+
+    def _env(name: str, default: str) -> str:
+        val = os.environ.get(name)
+        if val is None:
+            return default
+        return val
+
+    def _env_int(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name) or default)
+        except Exception:
+            return default
+
+    health = {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "version": pydantic_schemaforms.__version__,
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "central_dashboard.html",
+        {
+            "request": request,
+            "app_name": app.title,
+            "app_version": app.version,
+            "health": health,
+            "ip_geo": ip_geo,
+            "ip_geo_enabled": _env("IP_GEO_ENABLED", "0"),
+            "ip_geo_worker_enabled": _env("IP_GEO_WORKER_ENABLED", "0"),
+            "ip_geo_rate_limit_per_min": _env_int("IP_GEO_RATE_LIMIT_PER_MIN", 40),
+            "ip_geo_cache_ttl_days": _env_int("IP_GEO_CACHE_TTL_DAYS", 180),
+            "analytics_db_path": get_db_path(),
+            "token_required": token_required,
+            "ttl_min": ttl_min,
+        },
+    )
 
 
 @app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"])
@@ -2187,7 +2293,7 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
     # to a clean URL (so the token doesn't stay in the address bar).
     required = _dashboard_token_required()
     presented = _token_from_request(request)
-    if required and presented:
+    if presented:
         if presented != required:
             raise HTTPException(status_code=401, detail="Dashboard token required")
 
@@ -2205,8 +2311,9 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
     summary = get_summary(days=days, top_n=10)
     recent = get_recent_requests(limit=min(max(limit, 1), 500))
     recent_errors = get_recent_errors(limit=50)
+    ip_geo = get_ip_geo_queue_status()
 
-    token_required = _dashboard_token_required() is not None
+    token_required = True
     ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
 
     return templates.TemplateResponse(
@@ -2217,6 +2324,7 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
             "summary": summary,
             "recent": recent,
             "recent_errors": recent_errors,
+            "ip_geo": ip_geo,
             "token_required": token_required,
             "ttl_min": ttl_min,
         },

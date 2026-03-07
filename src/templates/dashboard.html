@@ -29,7 +29,7 @@
         <p class='muted'>Protected by <code>DASHBOARD_TOKEN</code>. Pass <code>?token=...</code> once to set a session cookie (~{{ ttl_min }} min), or use <code>X-Dashboard-Token</code> header.</p>
     {% endif %}
 
-    <p class='muted'>Try: <a href='/dashboard?days=1'>1d</a> · <a href='/dashboard?days=7'>7d</a> · <a href='/dashboard?days=30'>30d</a></p>
+    <p class='muted'>Try: <a href='/dashboard?days=1'>1d</a> · <a href='/dashboard?days=7'>7d</a> · <a href='/dashboard?days=30'>30d</a> · <a href='/central'>Central dashboard</a></p>
 
     <div class='grid'>
         <div class='card'>
@@ -43,6 +43,31 @@
         <div class='card'>
             <div class='muted'>Avg latency</div>
             <div class='kpi'>{{ summary.avg_duration_ms }} ms</div>
+        </div>
+
+        <div class='card'>
+            <div class='muted'>IP Geo queue</div>
+            {% if ip_geo and ip_geo.get('available') %}
+                <div class='kpi'>{{ ip_geo.get('pending', 0) }}</div>
+                <div class='muted'>pending · due now: <strong>{{ ip_geo.get('due_now', 0) }}</strong></div>
+                <div class='muted'>in progress: <strong>{{ ip_geo.get('in_progress', 0) }}</strong> · errors: <strong>{{ ip_geo.get('error', 0) }}</strong></div>
+                {% if ip_geo.get('leader') %}
+                    <div class='muted' style='margin-top:6px;'>
+                        worker leader: <code>{{ ip_geo.get('leader', {}).get('locked_by', '') }}</code>
+                        {% if ip_geo.get('leader', {}).get('expired') %}
+                            (expired)
+                        {% endif %}
+                    </div>
+                    <div class='muted'>
+                        lease until: <code>{{ ip_geo.get('leader', {}).get('locked_until', '') }}</code>
+                    </div>
+                {% else %}
+                    <div class='muted' style='margin-top:6px;'>worker leader: (none)</div>
+                {% endif %}
+            {% else %}
+                <div class='kpi'>—</div>
+                <div class='muted'>Not available (migrations not applied yet)</div>
+            {% endif %}
         </div>
     </div>
 
@@ -93,7 +118,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>ts</th><th>method</th><th>path</th><th>status</th><th>ms</th><th>ip</th><th>geo</th><th>browser</th>
+                    <th>ts</th><th>method</th><th>path</th><th>status</th><th>ms</th><th>ip</th><th>location</th><th>browser</th>
                 </tr>
             </thead>
             <tbody>
@@ -104,7 +129,9 @@
                         <td>{{ r.get('path', '') }}</td>
                         <td>{{ r.get('status_code', '') }}</td>
                         <td>{{ r.get('duration_ms', '') }}</td>
-                        <td>{{ r.get('client_ip', '') or '' }}</td>
+                        <td>
+                            <span style="cursor: help; text-decoration: underline dotted;" title="{{ (r.get('ip_geo_tooltip', '') or '') | e }}">{{ r.get('client_ip', '') or '' }}</span>
+                        </td>
                         <td>{{ r.get('flag', '') }} {{ r.get('location', '') }}</td>
                         <td>{{ r.get('browser', '') or '' }}</td>
                     </tr>
@@ -142,10 +169,10 @@
     <div style='margin-top: 18px; padding-top: 12px; border-top: 1px solid #e5e7eb;'>
         <p class='muted' style='margin: 0 0 6px 0;'><strong>Analytics config</strong></p>
         <p class='muted' style='margin: 0;'>
-            DB: <code>ANALYTICS_DB_PATH</code> (default: /tmp/schemaforms_analytics.sqlite) ·
+            DB: <code>ANALYTICS_DB_PATH</code> (default: ./data/schemaforms_analytics.sqlite) ·
             retention: <code>ANALYTICS_RETENTION_DAYS</code> (default: 7)
         </p>
     </div>
-    <p class='muted'><a href='/'>Back to app</a> · <a href='/dashboard/logout'>Logout</a></p>
+    <p class='muted'><a href='/'>Back to app</a> · <a href='/central'>Central dashboard</a> · <a href='/dashboard/logout'>Logout</a></p>
 </body>
 </html>
