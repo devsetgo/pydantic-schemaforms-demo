@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.3.7.1
+APP_VERSION = 26.3.7.6
 PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
@@ -19,6 +19,9 @@ PORT = 5000
 WORKER = 8
 LOG_LEVEL = debug
 
+DOCKER ?= docker
+DOCKER_GROUP ?= dockerhost
+
 REQUIREMENTS_PATH = requirements.txt
 
 # Container publishing
@@ -27,7 +30,7 @@ REQUIREMENTS_PATH = requirements.txt
 DOCKER_REGISTRY ?= docker.io
 DOCKER_REPO ?= mikeryan56/$(REPONAME)
 
-.PHONY: alembic-revision alembic-upgrade autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
+.PHONY: alembic-revision alembic-upgrade ensure-alembic bump bump-undo bump-undo-id bump-history autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
 
 ALEMBIC_REV_ID = $(subst .,_,$(APP_VERSION))
 
@@ -47,8 +50,31 @@ black: ## Reformat Python code to follow the Black code style
 	# black $(TESTS_PATH)
 	# black $(EXAMPLE_PATH)
 
-bump: ## Bump the version of the project
-	$(BUMPCALVER) --build
+
+bump: ## Bump the version of the project and create an Alembic revision
+	@set -e; \
+	old_ver="$(APP_VERSION)"; \
+	$(BUMPCALVER) --build; \
+	new_ver=$$(awk -F= '/^APP_VERSION[[:space:]]*=/ {gsub(/[[:space:]]/,"",$$2); print $$2; exit}' makefile); \
+	if [ -z "$$new_ver" ]; then echo "ERROR: could not read APP_VERSION from makefile after bump"; exit 2; fi; \
+	if [ "$$old_ver" = "$$new_ver" ]; then \
+		echo "(skipped) APP_VERSION unchanged ($$new_ver); not creating Alembic revision"; \
+	else \
+		$(MAKE) --no-print-directory alembic-revision; \
+	fi
+
+
+bump-undo: ## Undo the last bumpcalver operation (rollback version changes)
+	@$(BUMPCALVER) --undo
+
+
+bump-undo-id: ## Undo a specific bumpcalver operation (set UNDO_ID=...)
+	@if [ -z "$(UNDO_ID)" ]; then echo "ERROR: UNDO_ID is required. Example: make bump-undo-id UNDO_ID=20260308_004052_844"; exit 2; fi
+	@$(BUMPCALVER) --undo-id "$(UNDO_ID)"
+
+
+bump-history: ## List recent bumpcalver operations that can be undone
+	@$(BUMPCALVER) --list-history
 
 
 cleanup: isort ruff autoflake ## Run isort, ruff, autoflake
@@ -121,27 +147,37 @@ docker-build: ## Build the Docker image for the demo app
 	@$(PYTHON) -c "import alembic" >/dev/null 2>&1 \
 		&& (ANALYTICS_DB_PATH=/tmp/schemaforms_alembic_smoke.sqlite $(PYTHON) -m alembic -c alembic.ini upgrade head && rm -f /tmp/schemaforms_alembic_smoke.sqlite) \
 		|| echo "(skipped) alembic not installed in host Python; Docker build will smoke-test migrations inside the image"
-	docker build --no-cache -t $(REPONAME):${APP_VERSION} .
+	@set -e; cmd='$(DOCKER) build --no-cache -t $(REPONAME):$(APP_VERSION) .'; \
+		$(DOCKER) info >/dev/null 2>&1 && eval "$$cmd" \
+		|| (newgrp $(DOCKER_GROUP) -c "$(DOCKER) info" >/dev/null 2>&1 && newgrp $(DOCKER_GROUP) -c "$$cmd") \
+		|| (echo "ERROR: Docker daemon not accessible (permission denied). Try: newgrp $(DOCKER_GROUP) -c 'make docker-deploy'"; exit 2)
 
 docker-push: ## Push the Docker image to Docker Hub
-	docker tag $(REPONAME):${APP_VERSION} $(DOCKER_REGISTRY)/$(DOCKER_REPO):${APP_VERSION}
-	docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO):${APP_VERSION}
+	@set -e; tag_cmd='$(DOCKER) tag $(REPONAME):$(APP_VERSION) $(DOCKER_REGISTRY)/$(DOCKER_REPO):$(APP_VERSION)'; push_cmd='$(DOCKER) push $(DOCKER_REGISTRY)/$(DOCKER_REPO):$(APP_VERSION)'; \
+		$(DOCKER) info >/dev/null 2>&1 && (eval "$$tag_cmd" && eval "$$push_cmd") \
+		|| (newgrp $(DOCKER_GROUP) -c "$(DOCKER) info" >/dev/null 2>&1 && newgrp $(DOCKER_GROUP) -c "$$tag_cmd" && newgrp $(DOCKER_GROUP) -c "$$push_cmd") \
+		|| (echo "ERROR: Docker daemon not accessible (permission denied). Try: newgrp $(DOCKER_GROUP) -c 'make docker-push'"; exit 2)
 
 docker-run: ## Run the Docker container for the demo app
-	docker run -d \
-		-p $(PORT):$(PORT) \
-		-v $(SQLITE_PATH):/data \
-		-e ANALYTICS_DB_PATH=/data/schemaforms_analytics.sqlite \
-		-e IP_GEO_ENABLED=1 \
-		-e IP_GEO_WORKER_ENABLED=1 \
-		-e IP_GEO_RATE_LIMIT_PER_MIN=40 \
-		--name $(REPONAME)_container \
-		$(REPONAME):${APP_VERSION}
+	@set -e; cmd='$(DOCKER) run -d -p $(PORT):$(PORT) -v $(SQLITE_PATH):/data -e ANALYTICS_DB_PATH=/data/schemaforms_analytics.sqlite -e IP_GEO_ENABLED=1 -e IP_GEO_WORKER_ENABLED=1 -e IP_GEO_RATE_LIMIT_PER_MIN=40 --name $(REPONAME)_container $(REPONAME):$(APP_VERSION)'; \
+		$(DOCKER) info >/dev/null 2>&1 && eval "$$cmd" \
+		|| (newgrp $(DOCKER_GROUP) -c "$(DOCKER) info" >/dev/null 2>&1 && newgrp $(DOCKER_GROUP) -c "$$cmd") \
+		|| (echo "ERROR: Docker daemon not accessible (permission denied). Try: newgrp $(DOCKER_GROUP) -c 'make docker-run'"; exit 2)
 
-alembic-upgrade: ## Run Alembic migrations against ANALYTICS_DB_PATH
+ensure-alembic: check-python ## Ensure Alembic is installed in the active Python
+	@$(PYTHON) -c "import alembic" >/dev/null 2>&1 || (echo "Installing Python dependencies (required for Alembic)..."; $(PIP) install -r $(REQUIREMENTS_PATH))
+
+
+alembic-upgrade: ensure-alembic ## Run Alembic migrations against ANALYTICS_DB_PATH
 	$(PYTHON) -m alembic -c alembic.ini upgrade head
 
-alembic-revision: ## Create an Alembic revision named by APP_VERSION
-	$(PYTHON) -m alembic -c alembic.ini revision -m "$(APP_VERSION)" --rev-id "$(ALEMBIC_REV_ID)"
+alembic-revision: ensure-alembic ## Create an Alembic revision named by APP_VERSION
+	@set -e; \
+	existing=$$(ls -1 migrations/versions/$(ALEMBIC_REV_ID)_*.py 2>/dev/null | head -n 1 || true); \
+	if [ -n "$$existing" ]; then \
+		echo "(skipped) Alembic revision already exists for APP_VERSION=$(APP_VERSION): $$existing"; \
+	else \
+		$(PYTHON) -m alembic -c alembic.ini revision -m "$(APP_VERSION)" --rev-id "$(ALEMBIC_REV_ID)"; \
+	fi
 
 docker-deploy: docker-build docker-push ## Build, push, and run the Docker container for the demo app

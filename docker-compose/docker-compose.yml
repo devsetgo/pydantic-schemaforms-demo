@@ -29,6 +29,7 @@ services:
 
     volumes:
       - log-volume:/app/logs
+      - analytics-db-data:/app/data
     # Removed the deploy section
     # deploy:
     #   replicas: 2
@@ -49,4 +50,6 @@ volumes:
   mikeryan:
     external: false
   log-volume:
+    driver: local
+  analytics-db-data:
     driver: local
