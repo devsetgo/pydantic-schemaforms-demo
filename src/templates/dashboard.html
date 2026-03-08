@@ -17,7 +17,55 @@
         .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
         a { color: #2563eb; text-decoration: none; }
         a:hover { text-decoration: underline; }
+        .ip-link { background: transparent; border: 0; color: #2563eb; cursor: pointer; padding: 0; text-decoration: underline dotted; }
+        .ip-link:hover { text-decoration: underline; }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .modal-backdrop.show { display: flex; }
+        .modal-card {
+            width: min(860px, 96vw);
+            max-height: 90vh;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+        }
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 12px 14px;
+        }
+        .modal-close {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: #fff;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+        .modal-body { padding: 14px; }
+        pre.json-block {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 12px;
+        }
     </style>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 <body>
     <div class='row'>
@@ -130,7 +178,19 @@
                         <td>{{ r.get('status_code', '') }}</td>
                         <td>{{ r.get('duration_ms', '') }}</td>
                         <td>
-                            <span style="cursor: help; text-decoration: underline dotted;" title="{{ (r.get('ip_geo_tooltip', '') or '') | e }}">{{ r.get('client_ip', '') or '' }}</span>
+                            {% if r.get('ip_lookup_id') %}
+                                <button
+                                    class="ip-link"
+                                    type="button"
+                                    title="View IP details"
+                                    hx-get="/dashboard/ip-modal/{{ r.get('ip_lookup_id') }}"
+                                    hx-target="#ip-modal-body"
+                                    hx-swap="innerHTML"
+                                    onclick="openIpModal()"
+                                >{{ r.get('client_ip', '') or '' }}</button>
+                            {% else %}
+                                <span style="cursor: help; text-decoration: underline dotted;" title="{{ (r.get('ip_geo_tooltip', '') or '') | e }}">{{ r.get('client_ip', '') or '' }}</span>
+                            {% endif %}
                         </td>
                         <td>{{ r.get('flag', '') }} {{ r.get('location', '') }}</td>
                         <td>{{ r.get('browser', '') or '' }}</td>
@@ -174,5 +234,52 @@
         </p>
     </div>
     <p class='muted'><a href='/'>Back to app</a> · <a href='/central'>Central dashboard</a> · <a href='/dashboard/logout'>Logout</a></p>
+
+    <div id="ip-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="IP details">
+        <div class="modal-card">
+            <div class="modal-head">
+                <strong>IP Detail</strong>
+                <button type="button" class="modal-close" onclick="closeIpModal()">Close</button>
+            </div>
+            <div id="ip-modal-body" class="modal-body">
+                <div class="muted">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openIpModal() {
+            var modal = document.getElementById('ip-modal');
+            if (modal) {
+                modal.classList.add('show');
+            }
+        }
+
+        function closeIpModal() {
+            var modal = document.getElementById('ip-modal');
+            if (!modal) return;
+            modal.classList.remove('show');
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeIpModal();
+        });
+
+        document.getElementById('ip-modal').addEventListener('click', function (event) {
+            if (event.target && event.target.id === 'ip-modal') {
+                closeIpModal();
+            }
+        });
+
+        document.body.addEventListener('htmx:responseError', function (event) {
+            if (event.detail && event.detail.elt && event.detail.elt.classList.contains('ip-link')) {
+                var container = document.getElementById('ip-modal-body');
+                if (container) {
+                    container.innerHTML = '<div class="muted">Unable to load IP details. The link may have expired.</div>';
+                }
+                openIpModal();
+            }
+        });
+    </script>
 </body>
 </html>

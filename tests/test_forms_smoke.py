@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 from src.main import _form_mapping, app
 
-
 client = TestClient(app)
 
 
@@ -115,7 +114,11 @@ def _number_for_schema(schema: dict[str, Any]) -> int | float:
 
 
 def build_minimal_payload_from_schema(
-    schema: dict[str, Any], *, root_schema: dict[str, Any], depth: int = 0, seen_refs: set[str] | None = None
+    schema: dict[str, Any],
+    *,
+    root_schema: dict[str, Any],
+    depth: int = 0,
+    seen_refs: set[str] | None = None,
 ) -> Any:
     if seen_refs is None:
         seen_refs = set()

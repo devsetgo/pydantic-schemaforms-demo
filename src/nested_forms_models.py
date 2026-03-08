@@ -36,10 +36,10 @@ from pydantic_schemaforms.form_field import FormField
 from pydantic_schemaforms.form_layouts import HorizontalLayout, TabbedLayout, VerticalLayout
 from pydantic_schemaforms.schema_form import FormModel
 
-
 # ============================================================================
 # LEVEL 5 (DEEPEST) - Leaf Models
 # ============================================================================
+
 
 class Certification(FormModel):
     """Level 5: Individual certification credential."""
@@ -50,7 +50,7 @@ class Certification(FormModel):
         placeholder="e.g., AWS Solutions Architect",
         help_text="Name of the certification",
         icon="award",
-        max_length=100
+        max_length=100,
     )
 
     issuer: str = FormField(
@@ -59,20 +59,18 @@ class Certification(FormModel):
         placeholder="e.g., Amazon Web Services",
         help_text="Organization that issued the certification",
         icon="building",
-        max_length=100
+        max_length=100,
     )
 
     issue_date: date = FormField(
-        title="Issue Date",
-        input_type="date",
-        help_text="When was this certification issued?"
+        title="Issue Date", input_type="date", help_text="When was this certification issued?"
     )
 
     expiry_date: Optional[date] = FormField(
         None,
         title="Expiry Date",
         input_type="date",
-        help_text="When does this certification expire? (Leave empty if no expiry)"
+        help_text="When does this certification expire? (Leave empty if no expiry)",
     )
 
     credential_id: Optional[str] = FormField(
@@ -81,7 +79,7 @@ class Certification(FormModel):
         input_type="text",
         placeholder="Optional credential identifier",
         help_text="Unique ID for credential verification",
-        max_length=100
+        max_length=100,
     )
 
     credential_url: Optional[str] = FormField(
@@ -90,7 +88,7 @@ class Certification(FormModel):
         input_type="text",
         placeholder="https://...",
         help_text="Link to verify the credential",
-        max_length=500
+        max_length=500,
     )
 
 
@@ -103,7 +101,7 @@ class Subtask(FormModel):
         placeholder="Brief description of the subtask",
         help_text="What is this subtask about?",
         icon="list-check",
-        max_length=200
+        max_length=200,
     )
 
     description: Optional[str] = FormField(
@@ -112,7 +110,7 @@ class Subtask(FormModel):
         input_type="textarea",
         placeholder="Detailed description of the subtask",
         help_text="Additional details about this subtask",
-        max_length=1000
+        max_length=1000,
     )
 
     assigned_to: str = FormField(
@@ -121,7 +119,7 @@ class Subtask(FormModel):
         placeholder="Team member name",
         help_text="Who is responsible for this subtask?",
         icon="person",
-        max_length=100
+        max_length=100,
     )
 
     estimated_hours: float = FormField(
@@ -131,7 +129,7 @@ class Subtask(FormModel):
         help_text="Estimated time to complete",
         icon="clock",
         min_value=0.5,
-        max_value=100
+        max_value=100,
     )
 
     status: str = FormField(
@@ -142,15 +140,16 @@ class Subtask(FormModel):
             {"value": "pending", "label": "⏳ Pending"},
             {"value": "in_progress", "label": "🔄 In Progress"},
             {"value": "completed", "label": "✅ Completed"},
-            {"value": "blocked", "label": "🚫 Blocked"}
+            {"value": "blocked", "label": "🚫 Blocked"},
         ],
-        help_text="Current status of the subtask"
+        help_text="Current status of the subtask",
     )
 
 
 # ============================================================================
 # LEVEL 4 - Containers for Level 5
 # ============================================================================
+
 
 class TeamMember(FormModel):
     """Level 4: Team member with certifications (Level 5)."""
@@ -162,14 +161,14 @@ class TeamMember(FormModel):
         help_text="Full name of the team member",
         icon="person",
         min_length=2,
-        max_length=100
+        max_length=100,
     )
 
     email: EmailStr = FormField(
         title="Email Address",
         input_type="email",
         placeholder="member@company.com",
-        help_text="Contact email address"
+        help_text="Contact email address",
     )
 
     role: str = FormField(
@@ -178,13 +177,11 @@ class TeamMember(FormModel):
         placeholder="e.g., Senior Developer",
         help_text="Job title or role",
         icon="briefcase",
-        max_length=100
+        max_length=100,
     )
 
     hire_date: date = FormField(
-        title="Hire Date",
-        input_type="date",
-        help_text="When did this person join?"
+        title="Hire Date", input_type="date", help_text="When did this person join?"
     )
 
     experience_years: int = FormField(
@@ -194,7 +191,7 @@ class TeamMember(FormModel):
         help_text="Total professional experience in years",
         icon="hourglass-split",
         min_value=0,
-        max_value=70
+        max_value=70,
     )
 
     manager: Optional[str] = FormField(
@@ -203,7 +200,7 @@ class TeamMember(FormModel):
         input_type="text",
         placeholder="Direct manager name",
         help_text="Who supervises this team member?",
-        max_length=100
+        max_length=100,
     )
 
     certifications: List[Certification] = FormField(
@@ -225,8 +222,8 @@ class TeamMember(FormModel):
             "section_description": "Add credentials and certifications",
             "icon": "bi bi-award",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
@@ -240,7 +237,7 @@ class Task(FormModel):
         help_text="What is this task?",
         icon="bookmark",
         min_length=3,
-        max_length=200
+        max_length=200,
     )
 
     description: str = FormField(
@@ -248,7 +245,7 @@ class Task(FormModel):
         input_type="textarea",
         placeholder="Detailed description of the task",
         help_text="Full description of what needs to be done",
-        max_length=2000
+        max_length=2000,
     )
 
     priority: str = FormField(
@@ -259,10 +256,10 @@ class Task(FormModel):
             {"value": "low", "label": "🟢 Low"},
             {"value": "medium", "label": "🟡 Medium"},
             {"value": "high", "label": "🔴 High"},
-            {"value": "critical", "label": "⛔ Critical"}
+            {"value": "critical", "label": "⛔ Critical"},
         ],
         help_text="Task priority level",
-        icon="exclamation-circle"
+        icon="exclamation-circle",
     )
 
     status: str = FormField(
@@ -274,21 +271,17 @@ class Task(FormModel):
             {"value": "in_progress", "label": "🔄 In Progress"},
             {"value": "in_review", "label": "👀 In Review"},
             {"value": "completed", "label": "✅ Completed"},
-            {"value": "cancelled", "label": "❌ Cancelled"}
+            {"value": "cancelled", "label": "❌ Cancelled"},
         ],
-        help_text="Current task status"
+        help_text="Current task status",
     )
 
     start_date: date = FormField(
-        title="Start Date",
-        input_type="date",
-        help_text="When should this task start?"
+        title="Start Date", input_type="date", help_text="When should this task start?"
     )
 
     due_date: date = FormField(
-        title="Due Date",
-        input_type="date",
-        help_text="When is this task due?"
+        title="Due Date", input_type="date", help_text="When is this task due?"
     )
 
     assigned_to: str = FormField(
@@ -296,7 +289,7 @@ class Task(FormModel):
         input_type="text",
         placeholder="Team member name",
         help_text="Who is responsible for this task?",
-        max_length=100
+        max_length=100,
     )
 
     estimated_hours: float = FormField(
@@ -306,7 +299,7 @@ class Task(FormModel):
         help_text="Estimated time to complete (in hours)",
         icon="clock",
         min_value=0.5,
-        max_value=1000
+        max_value=1000,
     )
 
     subtasks: List[Subtask] = FormField(
@@ -328,14 +321,15 @@ class Task(FormModel):
             "section_description": "Organize this task into smaller, manageable subtasks",
             "icon": "bi bi-list-check",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
 # ============================================================================
 # LEVEL 3 - Containers for Level 4
 # ============================================================================
+
 
 class Team(FormModel):
     """Level 3: Team with members (Level 4) who have certifications (Level 5)."""
@@ -347,7 +341,7 @@ class Team(FormModel):
         help_text="Name of the team",
         icon="people",
         min_length=2,
-        max_length=100
+        max_length=100,
     )
 
     description: Optional[str] = FormField(
@@ -356,7 +350,7 @@ class Team(FormModel):
         input_type="textarea",
         placeholder="What does this team do?",
         help_text="Brief description of the team's responsibilities",
-        max_length=500
+        max_length=500,
     )
 
     team_lead: str = FormField(
@@ -365,13 +359,11 @@ class Team(FormModel):
         placeholder="Name of the team lead",
         help_text="Who leads this team?",
         icon="star",
-        max_length=100
+        max_length=100,
     )
 
     formed_date: date = FormField(
-        title="Formation Date",
-        input_type="date",
-        help_text="When was this team formed?"
+        title="Formation Date", input_type="date", help_text="When was this team formed?"
     )
 
     members: List[TeamMember] = FormField(
@@ -393,8 +385,8 @@ class Team(FormModel):
             "section_description": "Members of this team with their certifications and experience",
             "icon": "bi bi-people",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
@@ -408,7 +400,7 @@ class Project(FormModel):
         help_text="Name of the project",
         icon="kanban",
         min_length=3,
-        max_length=200
+        max_length=200,
     )
 
     description: str = FormField(
@@ -416,7 +408,7 @@ class Project(FormModel):
         input_type="textarea",
         placeholder="Detailed description of the project",
         help_text="What is this project about?",
-        max_length=2000
+        max_length=2000,
     )
 
     status: str = FormField(
@@ -428,22 +420,20 @@ class Project(FormModel):
             {"value": "in_progress", "label": "🚀 In Progress"},
             {"value": "on_hold", "label": "⏸️ On Hold"},
             {"value": "completed", "label": "✅ Completed"},
-            {"value": "archived", "label": "📦 Archived"}
+            {"value": "archived", "label": "📦 Archived"},
         ],
         help_text="Current project status",
-        icon="flag"
+        icon="flag",
     )
 
     start_date: date = FormField(
-        title="Project Start Date",
-        input_type="date",
-        help_text="When does this project start?"
+        title="Project Start Date", input_type="date", help_text="When does this project start?"
     )
 
     target_end_date: date = FormField(
         title="Target End Date",
         input_type="date",
-        help_text="When should this project be completed?"
+        help_text="When should this project be completed?",
     )
 
     budget: float = FormField(
@@ -452,7 +442,7 @@ class Project(FormModel):
         input_type="number",
         help_text="Project budget in USD",
         icon="cash-coin",
-        min_value=0
+        min_value=0,
     )
 
     project_manager: str = FormField(
@@ -461,7 +451,7 @@ class Project(FormModel):
         placeholder="PM name",
         help_text="Who is managing this project?",
         icon="person-badge",
-        max_length=100
+        max_length=100,
     )
 
     tasks: List[Task] = FormField(
@@ -483,8 +473,8 @@ class Project(FormModel):
             "section_description": "Organize project work into tasks and subtasks",
             "icon": "bi bi-list-task",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
@@ -496,6 +486,7 @@ class Project(FormModel):
 # LAYOUT DEMO FORMS (PUSH LAYOUT ENGINE)
 # ============================================================================
 
+
 class DepartmentSummaryForm(FormModel):
     """Compact summary form used inside layout demos."""
 
@@ -505,7 +496,7 @@ class DepartmentSummaryForm(FormModel):
         placeholder="e.g., Reduce infra costs by 15%",
         help_text="Primary department goal for this year",
         icon="bullseye",
-        max_length=200
+        max_length=200,
     )
 
     hiring_plan: str = FormField(
@@ -513,7 +504,7 @@ class DepartmentSummaryForm(FormModel):
         input_type="textarea",
         placeholder="Describe the hiring plan for the next 12 months",
         help_text="Key roles and timeline",
-        max_length=1000
+        max_length=1000,
     )
 
     risk_level: str = FormField(
@@ -523,9 +514,9 @@ class DepartmentSummaryForm(FormModel):
         options=[
             {"value": "low", "label": "🟢 Low"},
             {"value": "medium", "label": "🟡 Medium"},
-            {"value": "high", "label": "🔴 High"}
+            {"value": "high", "label": "🔴 High"},
         ],
-        help_text="Overall operational risk assessment"
+        help_text="Overall operational risk assessment",
     )
 
 
@@ -538,7 +529,7 @@ class ProjectPortfolioForm(FormModel):
         placeholder="Name of the portfolio owner",
         help_text="Who owns this portfolio?",
         icon="person-badge",
-        max_length=100
+        max_length=100,
     )
 
     quarterly_budget: float = FormField(
@@ -547,7 +538,7 @@ class ProjectPortfolioForm(FormModel):
         input_type="number",
         help_text="Planned spend for this quarter",
         icon="cash-coin",
-        min_value=0
+        min_value=0,
     )
 
     portfolio_status: str = FormField(
@@ -557,26 +548,30 @@ class ProjectPortfolioForm(FormModel):
         options=[
             {"value": "on_track", "label": "✅ On Track"},
             {"value": "at_risk", "label": "⚠️ At Risk"},
-            {"value": "off_track", "label": "🚨 Off Track"}
+            {"value": "off_track", "label": "🚨 Off Track"},
         ],
-        help_text="Overall portfolio health"
+        help_text="Overall portfolio health",
     )
 
 
 class DepartmentSummaryLayout(VerticalLayout):
     """Vertical layout for department summary."""
+
     form = DepartmentSummaryForm
 
 
 class ProjectPortfolioLayout(HorizontalLayout):
     """Horizontal layout for project portfolio."""
+
     form = ProjectPortfolioForm
 
 
 class DepartmentInsightsTabbed(TabbedLayout):
     """Tabbed layout combining multiple layout types."""
+
     summary = DepartmentSummaryLayout()
     portfolio = ProjectPortfolioLayout()
+
 
 class Department(FormModel):
     """Level 2: Department with teams (Level 3) and projects (Level 3)."""
@@ -588,7 +583,7 @@ class Department(FormModel):
         help_text="Name of the department",
         icon="building",
         min_length=2,
-        max_length=100
+        max_length=100,
     )
 
     description: Optional[str] = FormField(
@@ -597,7 +592,7 @@ class Department(FormModel):
         input_type="textarea",
         placeholder="What does this department do?",
         help_text="Description of department responsibilities",
-        max_length=1000
+        max_length=1000,
     )
 
     department_head: str = FormField(
@@ -606,20 +601,20 @@ class Department(FormModel):
         placeholder="Head of department name",
         help_text="Who leads this department?",
         icon="crown",
-        max_length=100
+        max_length=100,
     )
 
     head_email: EmailStr = FormField(
         title="Department Head Email",
         input_type="email",
         placeholder="head@company.com",
-        help_text="Contact email for the department head"
+        help_text="Contact email for the department head",
     )
 
     established_date: date = FormField(
         title="Established Date",
         input_type="date",
-        help_text="When was this department established?"
+        help_text="When was this department established?",
     )
 
     budget: float = FormField(
@@ -628,7 +623,7 @@ class Department(FormModel):
         input_type="number",
         help_text="Department annual budget in USD",
         icon="cash-coin",
-        min_value=0
+        min_value=0,
     )
 
     teams: List[Team] = FormField(
@@ -650,8 +645,8 @@ class Department(FormModel):
             "section_description": "Organize teams with members and their certifications",
             "icon": "bi bi-diagram-2",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     projects: List[Project] = FormField(
@@ -673,14 +668,15 @@ class Department(FormModel):
             "section_description": "Projects in progress with tasks and subtasks",
             "icon": "bi bi-kanban",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
 # ============================================================================
 # LEVEL 1 (ROOT) - The Complete Organization
 # ============================================================================
+
 
 class CompanyOrganizationForm(FormModel):
     """
@@ -720,7 +716,7 @@ class CompanyOrganizationForm(FormModel):
         help_text="Legal name of the company",
         icon="building",
         min_length=2,
-        max_length=200
+        max_length=200,
     )
 
     company_code: str = FormField(
@@ -730,7 +726,7 @@ class CompanyOrganizationForm(FormModel):
         help_text="Unique identifier for this company",
         icon="code",
         min_length=2,
-        max_length=50
+        max_length=50,
     )
 
     headquarters_address: str = FormField(
@@ -739,7 +735,7 @@ class CompanyOrganizationForm(FormModel):
         placeholder="Full address of headquarters",
         help_text="Main office address",
         icon="map-marker",
-        max_length=500
+        max_length=500,
     )
 
     ceo_name: str = FormField(
@@ -748,20 +744,18 @@ class CompanyOrganizationForm(FormModel):
         placeholder="Name of the CEO",
         help_text="Chief Executive Officer",
         icon="star",
-        max_length=100
+        max_length=100,
     )
 
     ceo_email: EmailStr = FormField(
         title="CEO Email",
         input_type="email",
         placeholder="ceo@company.com",
-        help_text="Email address of the CEO"
+        help_text="Email address of the CEO",
     )
 
     founded_date: date = FormField(
-        title="Founded Date",
-        input_type="date",
-        help_text="When was the company founded?"
+        title="Founded Date", input_type="date", help_text="When was the company founded?"
     )
 
     employee_count: int = FormField(
@@ -771,7 +765,7 @@ class CompanyOrganizationForm(FormModel):
         help_text="Total number of employees",
         icon="people",
         min_value=1,
-        max_value=1000000
+        max_value=1000000,
     )
 
     annual_revenue: float = FormField(
@@ -780,7 +774,7 @@ class CompanyOrganizationForm(FormModel):
         input_type="number",
         help_text="Company annual revenue in USD",
         icon="cash-coin",
-        min_value=0
+        min_value=0,
     )
 
     website: Optional[str] = FormField(
@@ -790,7 +784,7 @@ class CompanyOrganizationForm(FormModel):
         placeholder="https://www.example.com",
         help_text="Company website URL",
         icon="globe",
-        max_length=500
+        max_length=500,
     )
 
     departments: List[Department] = FormField(
@@ -812,21 +806,24 @@ class CompanyOrganizationForm(FormModel):
             "section_description": "Complete company hierarchy with departments, teams, members, and projects",
             "icon": "bi bi-diagram-2",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
-    @field_validator('company_code')
+    @field_validator("company_code")
     @classmethod
     def validate_code(cls, v):
-        if not v.replace('-', '').replace('_', '').isalnum():
-            raise ValueError("Company code can only contain letters, numbers, hyphens, and underscores")
+        if not v.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(
+                "Company code can only contain letters, numbers, hyphens, and underscores"
+            )
         return v.upper()
 
 
 # ============================================================================
 # TAB 2: KITCHEN SINK - ALL INPUT TYPES
 # ============================================================================
+
 
 class KitchenSinkForm(FormModel):
     """Comprehensive form demonstrating EVERY input type available."""
@@ -838,7 +835,7 @@ class KitchenSinkForm(FormModel):
         placeholder="Enter any text",
         help_text="Standard text input field",
         icon="fonts",
-        max_length=100
+        max_length=100,
     )
 
     email_input: EmailStr = FormField(
@@ -846,7 +843,7 @@ class KitchenSinkForm(FormModel):
         input_type="email",
         placeholder="user@example.com",
         help_text="Email address with validation",
-        icon="envelope-at"
+        icon="envelope-at",
     )
 
     password_input: str = FormField(
@@ -855,7 +852,7 @@ class KitchenSinkForm(FormModel):
         placeholder="Enter password",
         help_text="Password field (masked input)",
         icon="key",
-        min_length=8
+        min_length=8,
     )
 
     search_input: str = FormField(
@@ -863,7 +860,7 @@ class KitchenSinkForm(FormModel):
         input_type="search",
         placeholder="Search...",
         help_text="Search field with special styling",
-        icon="search"
+        icon="search",
     )
 
     url_input: str = FormField(
@@ -871,7 +868,7 @@ class KitchenSinkForm(FormModel):
         input_type="url",
         placeholder="https://example.com",
         help_text="URL field with validation",
-        icon="link-45deg"
+        icon="link-45deg",
     )
 
     tel_input: str = FormField(
@@ -879,7 +876,7 @@ class KitchenSinkForm(FormModel):
         input_type="tel",
         placeholder="+1-555-123-4567",
         help_text="Telephone number input",
-        icon="telephone"
+        icon="telephone",
     )
 
     textarea_input: str = FormField(
@@ -888,7 +885,7 @@ class KitchenSinkForm(FormModel):
         placeholder="Enter multiple lines of text...",
         help_text="Multi-line text input",
         icon="textarea-t",
-        max_length=500
+        max_length=500,
     )
 
     # === NUMERIC INPUTS ===
@@ -899,7 +896,7 @@ class KitchenSinkForm(FormModel):
         help_text="Integer number input",
         icon="123",
         min_value=0,
-        max_value=1000
+        max_value=1000,
     )
 
     decimal_input: float = FormField(
@@ -909,7 +906,7 @@ class KitchenSinkForm(FormModel):
         help_text="Floating-point number input",
         icon="calculator",
         min_value=0.0,
-        max_value=999.99
+        max_value=999.99,
     )
 
     range_input: int = FormField(
@@ -919,7 +916,7 @@ class KitchenSinkForm(FormModel):
         help_text="Slider for selecting a value",
         icon="sliders",
         min_value=0,
-        max_value=100
+        max_value=100,
     )
 
     # === SELECTION INPUTS ===
@@ -931,10 +928,10 @@ class KitchenSinkForm(FormModel):
             {"value": "option1", "label": "Option 1"},
             {"value": "option2", "label": "Option 2"},
             {"value": "option3", "label": "Option 3"},
-            {"value": "option4", "label": "Option 4"}
+            {"value": "option4", "label": "Option 4"},
         ],
         help_text="Single select dropdown",
-        icon="ui-checks"
+        icon="ui-checks",
     )
 
     radio_input: str = FormField(
@@ -944,10 +941,10 @@ class KitchenSinkForm(FormModel):
         options=[
             {"value": "small", "label": "Small"},
             {"value": "medium", "label": "Medium"},
-            {"value": "large", "label": "Large"}
+            {"value": "large", "label": "Large"},
         ],
         help_text="Radio button group",
-        icon="ui-radios"
+        icon="ui-radios",
     )
 
     multiselect_input: List[str] = FormField(
@@ -960,10 +957,10 @@ class KitchenSinkForm(FormModel):
             {"value": "typescript", "label": "📘 TypeScript"},
             {"value": "java", "label": "☕ Java"},
             {"value": "go", "label": "🐹 Go"},
-            {"value": "rust", "label": "🦀 Rust"}
+            {"value": "rust", "label": "🦀 Rust"},
         ],
         help_text="Select multiple options",
-        icon="list-check"
+        icon="list-check",
     )
 
     # === BOOLEAN INPUTS ===
@@ -972,7 +969,7 @@ class KitchenSinkForm(FormModel):
         title="Checkbox Input",
         input_type="checkbox",
         help_text="Boolean checkbox",
-        icon="check-square"
+        icon="check-square",
     )
 
     toggle_input: bool = FormField(
@@ -980,23 +977,16 @@ class KitchenSinkForm(FormModel):
         title="Toggle Switch",
         input_type="checkbox",
         help_text="Boolean toggle switch",
-        icon="toggle-on"
+        icon="toggle-on",
     )
 
     # === DATE/TIME INPUTS ===
     date_input: date = FormField(
-        title="Date Input",
-        input_type="date",
-        help_text="Date picker",
-        icon="calendar-date"
+        title="Date Input", input_type="date", help_text="Date picker", icon="calendar-date"
     )
 
     time_input: Optional[str] = FormField(
-        None,
-        title="Time Input",
-        input_type="time",
-        help_text="Time picker",
-        icon="clock"
+        None, title="Time Input", input_type="time", help_text="Time picker", icon="clock"
     )
 
     datetime_input: Optional[datetime] = FormField(
@@ -1004,7 +994,7 @@ class KitchenSinkForm(FormModel):
         title="DateTime Input",
         input_type="datetime-local",
         help_text="Date and time picker",
-        icon="calendar-event"
+        icon="calendar-event",
     )
 
     # === SPECIALIZED INPUTS ===
@@ -1013,20 +1003,21 @@ class KitchenSinkForm(FormModel):
         title="Color Picker",
         input_type="color",
         help_text="Color selection input",
-        icon="palette"
+        icon="palette",
     )
 
     hidden_input: str = FormField(
         "secret_value",
         title="Hidden Input",
         input_type="hidden",
-        help_text="Hidden field (not visible to users)"
+        help_text="Hidden field (not visible to users)",
     )
 
 
 # ============================================================================
 # TAB 3: CONTACT MANAGEMENT
 # ============================================================================
+
 
 class PhoneNumber(FormModel):
     """Nested phone number model."""
@@ -1038,9 +1029,9 @@ class PhoneNumber(FormModel):
             {"value": "mobile", "label": "📱 Mobile"},
             {"value": "work", "label": "💼 Work"},
             {"value": "home", "label": "🏠 Home"},
-            {"value": "fax", "label": "📠 Fax"}
+            {"value": "fax", "label": "📠 Fax"},
         ],
-        help_text="Type of phone number"
+        help_text="Type of phone number",
     )
 
     number: str = FormField(
@@ -1049,14 +1040,14 @@ class PhoneNumber(FormModel):
         placeholder="+1 (555) 123-4567",
         help_text="Contact phone number",
         icon="telephone",
-        max_length=20
+        max_length=20,
     )
 
     is_primary: bool = FormField(
         False,
         title="Primary Number",
         input_type="checkbox",
-        help_text="Is this the primary contact number?"
+        help_text="Is this the primary contact number?",
     )
 
 
@@ -1070,9 +1061,9 @@ class Address(FormModel):
             {"value": "home", "label": "🏠 Home"},
             {"value": "work", "label": "💼 Work"},
             {"value": "billing", "label": "💳 Billing"},
-            {"value": "shipping", "label": "📦 Shipping"}
+            {"value": "shipping", "label": "📦 Shipping"},
         ],
-        help_text="Type of address"
+        help_text="Type of address",
     )
 
     street_line1: str = FormField(
@@ -1081,7 +1072,7 @@ class Address(FormModel):
         placeholder="123 Main Street",
         help_text="Primary street address",
         icon="house",
-        max_length=200
+        max_length=200,
     )
 
     street_line2: Optional[str] = FormField(
@@ -1090,7 +1081,7 @@ class Address(FormModel):
         input_type="text",
         placeholder="Apt 4B",
         help_text="Apartment, suite, unit, etc.",
-        max_length=200
+        max_length=200,
     )
 
     city: str = FormField(
@@ -1099,7 +1090,7 @@ class Address(FormModel):
         placeholder="San Francisco",
         help_text="City name",
         icon="building",
-        max_length=100
+        max_length=100,
     )
 
     state: str = FormField(
@@ -1107,7 +1098,7 @@ class Address(FormModel):
         input_type="text",
         placeholder="CA",
         help_text="State or province",
-        max_length=50
+        max_length=50,
     )
 
     postal_code: str = FormField(
@@ -1116,7 +1107,7 @@ class Address(FormModel):
         placeholder="94105",
         help_text="ZIP or postal code",
         icon="mailbox",
-        max_length=20
+        max_length=20,
     )
 
     country: str = FormField(
@@ -1130,10 +1121,10 @@ class Address(FormModel):
             {"value": "AU", "label": "🇦🇺 Australia"},
             {"value": "DE", "label": "🇩🇪 Germany"},
             {"value": "FR", "label": "🇫🇷 France"},
-            {"value": "JP", "label": "🇯🇵 Japan"}
+            {"value": "JP", "label": "🇯🇵 Japan"},
         ],
         help_text="Country",
-        icon="globe"
+        icon="globe",
     )
 
 
@@ -1147,7 +1138,7 @@ class ContactManagementForm(FormModel):
         help_text="Contact's first name",
         icon="person",
         min_length=1,
-        max_length=100
+        max_length=100,
     )
 
     last_name: str = FormField(
@@ -1157,7 +1148,7 @@ class ContactManagementForm(FormModel):
         help_text="Contact's last name",
         icon="person",
         min_length=1,
-        max_length=100
+        max_length=100,
     )
 
     email: EmailStr = FormField(
@@ -1165,7 +1156,7 @@ class ContactManagementForm(FormModel):
         input_type="email",
         placeholder="john.doe@example.com",
         help_text="Primary email address",
-        icon="envelope"
+        icon="envelope",
     )
 
     company: Optional[str] = FormField(
@@ -1175,7 +1166,7 @@ class ContactManagementForm(FormModel):
         placeholder="Acme Corporation",
         help_text="Company or organization",
         icon="building",
-        max_length=200
+        max_length=200,
     )
 
     job_title: Optional[str] = FormField(
@@ -1185,7 +1176,7 @@ class ContactManagementForm(FormModel):
         placeholder="Software Engineer",
         help_text="Position or role",
         icon="briefcase",
-        max_length=100
+        max_length=100,
     )
 
     birth_date: Optional[date] = FormField(
@@ -1193,7 +1184,7 @@ class ContactManagementForm(FormModel):
         title="Date of Birth",
         input_type="date",
         help_text="Birth date (optional)",
-        icon="cake"
+        icon="cake",
     )
 
     phone_numbers: List[PhoneNumber] = FormField(
@@ -1215,8 +1206,8 @@ class ContactManagementForm(FormModel):
             "section_description": "Manage multiple phone numbers",
             "icon": "bi bi-telephone",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     addresses: List[Address] = FormField(
@@ -1238,8 +1229,8 @@ class ContactManagementForm(FormModel):
             "section_description": "Manage multiple addresses",
             "icon": "bi bi-house",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     notes: Optional[str] = FormField(
@@ -1249,13 +1240,14 @@ class ContactManagementForm(FormModel):
         placeholder="Additional notes about this contact...",
         help_text="Any additional information",
         icon="sticky",
-        max_length=2000
+        max_length=2000,
     )
 
 
 # ============================================================================
 # TAB 4: SCHEDULING & EVENTS
 # ============================================================================
+
 
 class RecurringEvent(FormModel):
     """Nested recurring event model."""
@@ -1266,7 +1258,7 @@ class RecurringEvent(FormModel):
         placeholder="Weekly Team Meeting",
         help_text="Name of the recurring event",
         icon="calendar-event",
-        max_length=200
+        max_length=200,
     )
 
     event_type: str = FormField(
@@ -1278,23 +1270,20 @@ class RecurringEvent(FormModel):
             {"value": "deadline", "label": "📅 Deadline"},
             {"value": "birthday", "label": "🎂 Birthday"},
             {"value": "anniversary", "label": "💍 Anniversary"},
-            {"value": "other", "label": "📌 Other"}
+            {"value": "other", "label": "📌 Other"},
         ],
-        help_text="Type of event"
+        help_text="Type of event",
     )
 
     start_date: date = FormField(
         title="Start Date",
         input_type="date",
         help_text="When does this event start?",
-        icon="calendar-check"
+        icon="calendar-check",
     )
 
     start_time: str = FormField(
-        title="Start Time",
-        input_type="time",
-        help_text="Event start time",
-        icon="clock"
+        title="Start Time", input_type="time", help_text="Event start time", icon="clock"
     )
 
     duration_minutes: int = FormField(
@@ -1304,7 +1293,7 @@ class RecurringEvent(FormModel):
         help_text="How long is the event?",
         icon="hourglass",
         min_value=15,
-        max_value=1440
+        max_value=1440,
     )
 
     recurrence_pattern: str = FormField(
@@ -1316,16 +1305,16 @@ class RecurringEvent(FormModel):
             {"value": "weekly", "label": "📅 Weekly"},
             {"value": "biweekly", "label": "📅📅 Bi-weekly"},
             {"value": "monthly", "label": "📆 Monthly"},
-            {"value": "yearly", "label": "🗓️ Yearly"}
+            {"value": "yearly", "label": "🗓️ Yearly"},
         ],
-        help_text="How often does this repeat?"
+        help_text="How often does this repeat?",
     )
 
     end_date: Optional[date] = FormField(
         None,
         title="End Date",
         input_type="date",
-        help_text="When should recurrence stop? (optional)"
+        help_text="When should recurrence stop? (optional)",
     )
 
     location: Optional[str] = FormField(
@@ -1335,7 +1324,7 @@ class RecurringEvent(FormModel):
         placeholder="Conference Room A",
         help_text="Where will this event take place?",
         icon="geo-alt",
-        max_length=200
+        max_length=200,
     )
 
     send_reminder: bool = FormField(
@@ -1343,7 +1332,7 @@ class RecurringEvent(FormModel):
         title="Send Reminder",
         input_type="checkbox",
         help_text="Send notification before event?",
-        icon="bell"
+        icon="bell",
     )
 
 
@@ -1356,7 +1345,7 @@ class SchedulingForm(FormModel):
         placeholder="Work Calendar",
         help_text="Name for this calendar",
         icon="calendar3",
-        max_length=100
+        max_length=100,
     )
 
     timezone: str = FormField(
@@ -1370,10 +1359,10 @@ class SchedulingForm(FormModel):
             {"value": "America/Los_Angeles", "label": "🌴 Pacific (PT)"},
             {"value": "Europe/London", "label": "🇬🇧 London (GMT)"},
             {"value": "Europe/Paris", "label": "🇫🇷 Paris (CET)"},
-            {"value": "Asia/Tokyo", "label": "🇯🇵 Tokyo (JST)"}
+            {"value": "Asia/Tokyo", "label": "🇯🇵 Tokyo (JST)"},
         ],
         help_text="Your timezone",
-        icon="globe"
+        icon="globe",
     )
 
     default_event_duration: int = FormField(
@@ -1383,7 +1372,7 @@ class SchedulingForm(FormModel):
         help_text="Default length for new events",
         icon="clock",
         min_value=15,
-        max_value=480
+        max_value=480,
     )
 
     work_start_time: Optional[str] = FormField(
@@ -1391,7 +1380,7 @@ class SchedulingForm(FormModel):
         title="Work Start Time",
         input_type="time",
         help_text="When does your workday start?",
-        icon="sunrise"
+        icon="sunrise",
     )
 
     work_end_time: Optional[str] = FormField(
@@ -1399,7 +1388,7 @@ class SchedulingForm(FormModel):
         title="Work End Time",
         input_type="time",
         help_text="When does your workday end?",
-        icon="sunset"
+        icon="sunset",
     )
 
     weekend_days: List[str] = FormField(
@@ -1413,10 +1402,10 @@ class SchedulingForm(FormModel):
             {"value": "wednesday", "label": "Wednesday"},
             {"value": "thursday", "label": "Thursday"},
             {"value": "friday", "label": "Friday"},
-            {"value": "saturday", "label": "Saturday"}
+            {"value": "saturday", "label": "Saturday"},
         ],
         help_text="Select your non-working days",
-        icon="calendar-x"
+        icon="calendar-x",
     )
 
     recurring_events: List[RecurringEvent] = FormField(
@@ -1438,14 +1427,15 @@ class SchedulingForm(FormModel):
             "section_description": "Manage repeating events and reminders",
             "icon": "bi bi-arrow-repeat",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
 
 # ============================================================================
 # TAB 5: MEDIA & FILES
 # ============================================================================
+
 
 class ColorTheme(FormModel):
     """Nested color theme model."""
@@ -1456,7 +1446,7 @@ class ColorTheme(FormModel):
         placeholder="Ocean Blue",
         help_text="Name for this color theme",
         icon="palette",
-        max_length=50
+        max_length=50,
     )
 
     primary_color: str = FormField(
@@ -1464,7 +1454,7 @@ class ColorTheme(FormModel):
         title="Primary Color",
         input_type="color",
         help_text="Main brand color",
-        icon="palette"
+        icon="palette",
     )
 
     secondary_color: str = FormField(
@@ -1472,7 +1462,7 @@ class ColorTheme(FormModel):
         title="Secondary Color",
         input_type="color",
         help_text="Secondary accent color",
-        icon="palette"
+        icon="palette",
     )
 
     accent_color: str = FormField(
@@ -1480,7 +1470,7 @@ class ColorTheme(FormModel):
         title="Accent Color",
         input_type="color",
         help_text="Highlight color",
-        icon="palette"
+        icon="palette",
     )
 
     background_color: str = FormField(
@@ -1488,7 +1478,7 @@ class ColorTheme(FormModel):
         title="Background Color",
         input_type="color",
         help_text="Page background color",
-        icon="palette"
+        icon="palette",
     )
 
     text_color: str = FormField(
@@ -1496,14 +1486,14 @@ class ColorTheme(FormModel):
         title="Text Color",
         input_type="color",
         help_text="Primary text color",
-        icon="palette"
+        icon="palette",
     )
 
     is_default: bool = FormField(
         False,
         title="Set as Default",
         input_type="checkbox",
-        help_text="Use this as the default theme?"
+        help_text="Use this as the default theme?",
     )
 
 
@@ -1517,7 +1507,7 @@ class MediaFilesForm(FormModel):
         placeholder="https://example.com/avatar.jpg",
         help_text="URL to profile picture",
         icon="person-circle",
-        max_length=500
+        max_length=500,
     )
 
     background_image_url: Optional[str] = FormField(
@@ -1527,7 +1517,7 @@ class MediaFilesForm(FormModel):
         placeholder="https://example.com/background.jpg",
         help_text="URL to background image",
         icon="image",
-        max_length=500
+        max_length=500,
     )
 
     favicon_color: str = FormField(
@@ -1535,7 +1525,7 @@ class MediaFilesForm(FormModel):
         title="Favicon Color",
         input_type="color",
         help_text="Color for browser favicon",
-        icon="palette"
+        icon="palette",
     )
 
     enable_animations: bool = FormField(
@@ -1543,7 +1533,7 @@ class MediaFilesForm(FormModel):
         title="Enable Animations",
         input_type="checkbox",
         help_text="Show animated transitions?",
-        icon="play-circle"
+        icon="play-circle",
     )
 
     enable_sound: bool = FormField(
@@ -1551,7 +1541,7 @@ class MediaFilesForm(FormModel):
         title="Enable Sound Effects",
         input_type="checkbox",
         help_text="Play sound effects?",
-        icon="volume-up"
+        icon="volume-up",
     )
 
     video_quality: str = FormField(
@@ -1563,10 +1553,10 @@ class MediaFilesForm(FormModel):
             {"value": "1080p", "label": "🎬 1080p (HD)"},
             {"value": "720p", "label": "📹 720p"},
             {"value": "480p", "label": "📺 480p"},
-            {"value": "360p", "label": "📱 360p"}
+            {"value": "360p", "label": "📱 360p"},
         ],
         help_text="Preferred video playback quality",
-        icon="film"
+        icon="film",
     )
 
     autoplay_videos: bool = FormField(
@@ -1574,7 +1564,7 @@ class MediaFilesForm(FormModel):
         title="Autoplay Videos",
         input_type="checkbox",
         help_text="Automatically play videos?",
-        icon="play"
+        icon="play",
     )
 
     color_themes: List[ColorTheme] = FormField(
@@ -1596,8 +1586,8 @@ class MediaFilesForm(FormModel):
             "section_description": "Design your own color schemes",
             "icon": "bi bi-palette2",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     max_upload_size_mb: int = FormField(
@@ -1607,13 +1597,14 @@ class MediaFilesForm(FormModel):
         help_text="Maximum file size for uploads",
         icon="cloud-upload",
         min_value=1,
-        max_value=100
+        max_value=100,
     )
 
 
 # ============================================================================
 # TAB 6: SETTINGS & PREFERENCES
 # ============================================================================
+
 
 class NotificationPreference(FormModel):
     """Nested notification preference model."""
@@ -1625,9 +1616,9 @@ class NotificationPreference(FormModel):
             {"value": "email", "label": "📧 Email"},
             {"value": "sms", "label": "📱 SMS"},
             {"value": "push", "label": "🔔 Push Notification"},
-            {"value": "in_app", "label": "💬 In-App"}
+            {"value": "in_app", "label": "💬 In-App"},
         ],
-        help_text="Type of notification"
+        help_text="Type of notification",
     )
 
     event_category: str = FormField(
@@ -1638,9 +1629,9 @@ class NotificationPreference(FormModel):
             {"value": "updates", "label": "📰 Product Updates"},
             {"value": "marketing", "label": "📣 Marketing"},
             {"value": "reminders", "label": "⏰ Reminders"},
-            {"value": "social", "label": "👥 Social Activity"}
+            {"value": "social", "label": "👥 Social Activity"},
         ],
-        help_text="What triggers this notification?"
+        help_text="What triggers this notification?",
     )
 
     enabled: bool = FormField(
@@ -1648,7 +1639,7 @@ class NotificationPreference(FormModel):
         title="Enabled",
         input_type="checkbox",
         help_text="Receive these notifications?",
-        icon="bell"
+        icon="bell",
     )
 
     frequency: str = FormField(
@@ -1659,9 +1650,9 @@ class NotificationPreference(FormModel):
             {"value": "realtime", "label": "⚡ Real-time"},
             {"value": "hourly", "label": "🕐 Hourly Digest"},
             {"value": "daily", "label": "📅 Daily Digest"},
-            {"value": "weekly", "label": "📆 Weekly Digest"}
+            {"value": "weekly", "label": "📆 Weekly Digest"},
         ],
-        help_text="How often to receive notifications?"
+        help_text="How often to receive notifications?",
     )
 
 
@@ -1675,7 +1666,7 @@ class SettingsForm(FormModel):
         help_text="Your unique username",
         icon="person-badge",
         min_length=3,
-        max_length=50
+        max_length=50,
     )
 
     display_name: str = FormField(
@@ -1684,7 +1675,7 @@ class SettingsForm(FormModel):
         placeholder="John Doe",
         help_text="Name shown to other users",
         icon="person",
-        max_length=100
+        max_length=100,
     )
 
     language: str = FormField(
@@ -1697,10 +1688,10 @@ class SettingsForm(FormModel):
             {"value": "fr", "label": "🇫🇷 Français"},
             {"value": "de", "label": "🇩🇪 Deutsch"},
             {"value": "ja", "label": "🇯🇵 日本語"},
-            {"value": "zh", "label": "🇨🇳 中文"}
+            {"value": "zh", "label": "🇨🇳 中文"},
         ],
         help_text="Preferred language",
-        icon="translate"
+        icon="translate",
     )
 
     ui_theme: str = FormField(
@@ -1710,9 +1701,9 @@ class SettingsForm(FormModel):
         options=[
             {"value": "light", "label": "☀️ Light"},
             {"value": "dark", "label": "🌙 Dark"},
-            {"value": "auto", "label": "🔄 Auto"}
+            {"value": "auto", "label": "🔄 Auto"},
         ],
-        help_text="Interface theme preference"
+        help_text="Interface theme preference",
     )
 
     font_size: int = FormField(
@@ -1722,7 +1713,7 @@ class SettingsForm(FormModel):
         help_text="Adjust text size",
         icon="fonts",
         min_value=10,
-        max_value=24
+        max_value=24,
     )
 
     accessibility_mode: bool = FormField(
@@ -1730,7 +1721,7 @@ class SettingsForm(FormModel):
         title="Accessibility Mode",
         input_type="checkbox",
         help_text="Enable high-contrast and screen reader support",
-        icon="universal-access"
+        icon="universal-access",
     )
 
     compact_view: bool = FormField(
@@ -1738,7 +1729,7 @@ class SettingsForm(FormModel):
         title="Compact View",
         input_type="checkbox",
         help_text="Use denser layout to show more content",
-        icon="layout-split"
+        icon="layout-split",
     )
 
     show_tutorials: bool = FormField(
@@ -1746,7 +1737,7 @@ class SettingsForm(FormModel):
         title="Show Tutorial Tooltips",
         input_type="checkbox",
         help_text="Display helpful tips for new features",
-        icon="question-circle"
+        icon="question-circle",
     )
 
     auto_save: bool = FormField(
@@ -1754,7 +1745,7 @@ class SettingsForm(FormModel):
         title="Auto-Save",
         input_type="checkbox",
         help_text="Automatically save changes",
-        icon="floppy"
+        icon="floppy",
     )
 
     auto_save_interval: int = FormField(
@@ -1764,7 +1755,7 @@ class SettingsForm(FormModel):
         help_text="How often to auto-save",
         icon="clock",
         min_value=1,
-        max_value=60
+        max_value=60,
     )
 
     notification_preferences: List[NotificationPreference] = FormField(
@@ -1786,8 +1777,8 @@ class SettingsForm(FormModel):
             "section_description": "Control how and when you receive notifications",
             "icon": "bi bi-bell",
             "collapsible": True,
-            "collapsed": False
-        }
+            "collapsed": False,
+        },
     )
 
     two_factor_enabled: bool = FormField(
@@ -1795,7 +1786,7 @@ class SettingsForm(FormModel):
         title="Two-Factor Authentication",
         input_type="checkbox",
         help_text="Enable 2FA for enhanced security",
-        icon="shield-check"
+        icon="shield-check",
     )
 
     session_timeout: int = FormField(
@@ -1808,10 +1799,10 @@ class SettingsForm(FormModel):
             {"value": 60, "label": "1 hour"},
             {"value": 120, "label": "2 hours"},
             {"value": 480, "label": "8 hours"},
-            {"value": 1440, "label": "24 hours"}
+            {"value": 1440, "label": "24 hours"},
         ],
         help_text="Auto-logout after inactivity",
-        icon="stopwatch"
+        icon="stopwatch",
     )
 
 
@@ -1819,32 +1810,46 @@ class SettingsForm(FormModel):
 # MAIN TABBED LAYOUT
 # ============================================================================
 
+
 class OrganizationLayout(VerticalLayout):
     """Wrapper layout for organization form."""
+
     form = CompanyOrganizationForm
+
 
 class KitchenSinkLayout(VerticalLayout):
     """Wrapper layout for kitchen sink form."""
+
     form = KitchenSinkForm
+
 
 class ContactsLayout(VerticalLayout):
     """Wrapper layout for contacts form."""
+
     form = ContactManagementForm
+
 
 class SchedulingLayout(VerticalLayout):
     """Wrapper layout for scheduling form."""
+
     form = SchedulingForm
+
 
 class MediaLayout(VerticalLayout):
     """Wrapper layout for media form."""
+
     form = MediaFilesForm
+
 
 class SettingsLayout(VerticalLayout):
     """Wrapper layout for settings form."""
+
     form = SettingsForm
+
 
 class ComprehensiveTabbed(TabbedLayout):
     """Main tabbed layout combining all forms."""
+
     organization = OrganizationLayout()
     kitchen_sink = KitchenSinkLayout()
     contacts = ContactsLayout()
@@ -1871,13 +1876,14 @@ class ComprehensiveTabbedForm(FormModel):
         default_factory=ComprehensiveTabbed,
         title="Complete Feature Showcase",
         input_type="layout",
-        help_text="Explore all 6 tabs to see every feature of Pydantic SchemaForms"
+        help_text="Explore all 6 tabs to see every feature of Pydantic SchemaForms",
     )
 
 
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
+
 
 def create_sample_nested_data() -> dict:
     """Create sample data for testing deeply nested forms."""
@@ -1920,7 +1926,7 @@ def create_sample_nested_data() -> dict:
                                         "issue_date": "2022-05-01",
                                         "expiry_date": "2025-05-01",
                                         "credential_id": "AWS-12345",
-                                        "credential_url": "https://aws.amazon.com/verification/12345"
+                                        "credential_url": "https://aws.amazon.com/verification/12345",
                                     },
                                     {
                                         "name": "Certified Kubernetes Administrator",
@@ -1928,11 +1934,11 @@ def create_sample_nested_data() -> dict:
                                         "issue_date": "2023-01-15",
                                         "expiry_date": "2026-01-15",
                                         "credential_id": "CKA-67890",
-                                        "credential_url": "https://cncf.io/verify/67890"
-                                    }
-                                ]
+                                        "credential_url": "https://cncf.io/verify/67890",
+                                    },
+                                ],
                             }
-                        ]
+                        ],
                     }
                 ],
                 "projects": [
@@ -1960,15 +1966,15 @@ def create_sample_nested_data() -> dict:
                                         "description": "Set up FastAPI project structure",
                                         "assigned_to": "Bob Wilson",
                                         "estimated_hours": 16.0,
-                                        "status": "completed"
+                                        "status": "completed",
                                     }
-                                ]
+                                ],
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
-        ]
+        ],
     }
 
 
@@ -1979,7 +1985,6 @@ def create_comprehensive_sample_data() -> dict:
     return {
         # Tab 1: Organization (reuse existing nested data)
         "organization": create_sample_nested_data(),
-
         # Tab 2: Kitchen Sink (all input types with sample values)
         "kitchen_sink": {
             "text_input": "Sample text value",
@@ -2001,9 +2006,8 @@ def create_comprehensive_sample_data() -> dict:
             "time_input": "14:30",
             "datetime_input": datetime(2024, 6, 15, 14, 30).isoformat(),
             "color_input": "#e74c3c",
-            "hidden_input": "hidden_secret_value"
+            "hidden_input": "hidden_secret_value",
         },
-
         # Tab 3: Contact Management
         "contacts": {
             "first_name": "John",
@@ -2013,16 +2017,8 @@ def create_comprehensive_sample_data() -> dict:
             "job_title": "Senior Software Engineer",
             "birth_date": "1985-04-12",
             "phone_numbers": [
-                {
-                    "phone_type": "mobile",
-                    "number": "+1 (555) 123-4567",
-                    "is_primary": True
-                },
-                {
-                    "phone_type": "work",
-                    "number": "+1 (555) 987-6543",
-                    "is_primary": False
-                }
+                {"phone_type": "mobile", "number": "+1 (555) 123-4567", "is_primary": True},
+                {"phone_type": "work", "number": "+1 (555) 987-6543", "is_primary": False},
             ],
             "addresses": [
                 {
@@ -2032,7 +2028,7 @@ def create_comprehensive_sample_data() -> dict:
                     "city": "San Francisco",
                     "state": "CA",
                     "postal_code": "94105",
-                    "country": "US"
+                    "country": "US",
                 },
                 {
                     "address_type": "work",
@@ -2041,12 +2037,11 @@ def create_comprehensive_sample_data() -> dict:
                     "city": "Palo Alto",
                     "state": "CA",
                     "postal_code": "94301",
-                    "country": "US"
-                }
+                    "country": "US",
+                },
             ],
-            "notes": "Prefers email communication. Available Monday-Friday 9am-5pm PST."
+            "notes": "Prefers email communication. Available Monday-Friday 9am-5pm PST.",
         },
-
         # Tab 4: Scheduling
         "scheduling": {
             "calendar_name": "Work Calendar",
@@ -2065,7 +2060,7 @@ def create_comprehensive_sample_data() -> dict:
                     "recurrence_pattern": "weekly",
                     "end_date": "2024-12-31",
                     "location": "Conference Room A",
-                    "send_reminder": True
+                    "send_reminder": True,
                 },
                 {
                     "event_name": "Monthly All Hands",
@@ -2076,11 +2071,10 @@ def create_comprehensive_sample_data() -> dict:
                     "recurrence_pattern": "monthly",
                     "end_date": None,
                     "location": "Main Auditorium",
-                    "send_reminder": True
-                }
-            ]
+                    "send_reminder": True,
+                },
+            ],
         },
-
         # Tab 5: Media & Files
         "media": {
             "profile_picture_url": "https://example.com/avatars/user123.jpg",
@@ -2098,7 +2092,7 @@ def create_comprehensive_sample_data() -> dict:
                     "accent_color": "#e74c3c",
                     "background_color": "#ffffff",
                     "text_color": "#2c3e50",
-                    "is_default": True
+                    "is_default": True,
                 },
                 {
                     "theme_name": "Dark Mode",
@@ -2107,12 +2101,11 @@ def create_comprehensive_sample_data() -> dict:
                     "accent_color": "#f39c12",
                     "background_color": "#0a0a0a",
                     "text_color": "#ecf0f1",
-                    "is_default": False
-                }
+                    "is_default": False,
+                },
             ],
-            "max_upload_size_mb": 25
+            "max_upload_size_mb": 25,
         },
-
         # Tab 6: Settings
         "settings": {
             "username": "jsmith",
@@ -2130,24 +2123,24 @@ def create_comprehensive_sample_data() -> dict:
                     "notification_type": "email",
                     "event_category": "security",
                     "enabled": True,
-                    "frequency": "realtime"
+                    "frequency": "realtime",
                 },
                 {
                     "notification_type": "push",
                     "event_category": "updates",
                     "enabled": True,
-                    "frequency": "daily"
+                    "frequency": "daily",
                 },
                 {
                     "notification_type": "email",
                     "event_category": "marketing",
                     "enabled": False,
-                    "frequency": "weekly"
-                }
+                    "frequency": "weekly",
+                },
             ],
             "two_factor_enabled": True,
-            "session_timeout": 60
-        }
+            "session_timeout": 60,
+        },
     }
 
 

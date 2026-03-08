@@ -21,6 +21,7 @@ import time
 import json
 import ipaddress
 import urllib.request
+from uuid import uuid4
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -260,6 +261,19 @@ def _is_public_ip(ip: str | None) -> bool:
 _geoip_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 
 
+_LOCAL_SAMPLE_IPS = [
+    "34.136.250.113",
+    "47.202.132.163",
+    "44.207.207.36",
+    "54.162.53.446.101.115.83",  # invalid on purpose in provided list; skipped safely
+    "44.195.201.244",
+    "74.7.230.41",
+    "16.144.17.106",
+    "146.70.185.32",
+    "34.170.116.95",
+]
+
+
 def _geoip_cache_ttl_seconds() -> int:
     raw = os.environ.get("ANALYTICS_GEOIP_CACHE_TTL_SECONDS")
     try:
@@ -361,6 +375,137 @@ def _set_last_prune(conn: sqlite3.Connection) -> None:
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (_iso(_utcnow()),),
     )
+
+
+def _meta_get(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    if not row:
+        return None
+    return str(row["value"])
+
+
+def _meta_set(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+
+
+def _sample_geo_for_ip(ip: str) -> dict[str, Any]:
+    # Deterministic pseudo-geo for local demos; no external calls needed.
+    zones = [
+        ("United States", "US", "Virginia", "Ashburn", 39.0438, -77.4874),
+        ("United States", "US", "Texas", "Dallas", 32.7767, -96.7970),
+        ("Canada", "CA", "Ontario", "Toronto", 43.6532, -79.3832),
+        ("United Kingdom", "GB", "England", "London", 51.5072, -0.1276),
+        ("Germany", "DE", "Hesse", "Frankfurt", 50.1109, 8.6821),
+    ]
+    bucket = sum(ord(c) for c in ip) % len(zones)
+    country, country_code, region, city, lat, lon = zones[bucket]
+    return {
+        "country": country,
+        "country_code": country_code,
+        "region": region,
+        "city": city,
+        "lat": lat,
+        "lon": lon,
+        "provider": "local-seed",
+    }
+
+
+def seed_local_ip_examples(*, force: bool = False) -> dict[str, int]:
+    """Insert sample request + geo rows for local dashboard demos.
+
+    The seed is idempotent and tracked in `meta` unless `force=True`.
+    """
+
+    inserted = 0
+    skipped = 0
+    marker_key = "local_sample_ips_seeded_v1"
+
+    try:
+        with _connect() as conn:
+            if not force and _meta_get(conn, marker_key):
+                return {"inserted": 0, "skipped": 0}
+
+            now_iso = _iso(_utcnow())
+
+            for idx, raw_ip in enumerate(_LOCAL_SAMPLE_IPS):
+                ip = _normalize_ip(raw_ip)
+                if not ip or not _is_public_ip(ip):
+                    skipped += 1
+                    continue
+
+                geo = _sample_geo_for_ip(ip)
+                raw_geo_json = json.dumps(
+                    {
+                        "provider": geo["provider"],
+                        "query": ip,
+                        "country": geo["country"],
+                        "countryCode": geo["country_code"],
+                        "regionName": geo["region"],
+                        "city": geo["city"],
+                        "lat": geo["lat"],
+                        "lon": geo["lon"],
+                        "seeded": True,
+                    },
+                    ensure_ascii=False,
+                )
+
+                # Best effort: also seed ip_geo_cache for richer dashboard tooltip/modal data.
+                try:
+                    from .ip_geo_store import upsert_cache_success
+
+                    upsert_cache_success(
+                        ip=ip,
+                        country=geo["country"],
+                        country_code=geo["country_code"],
+                        region=geo["region"],
+                        city=geo["city"],
+                        lat=geo["lat"],
+                        lon=geo["lon"],
+                        raw_json=raw_geo_json,
+                        status_code=200,
+                    )
+                except Exception:
+                    pass
+
+                conn.execute(
+                    """
+                    INSERT INTO request_log(
+                        ts, request_id, user_id, method, path, status_code, duration_ms,
+                        client_ip, country, country_code, region, city, latitude, longitude,
+                        user_agent, browser, referer
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """.strip(),
+                    (
+                        now_iso,
+                        uuid4().hex,
+                        "local-seed-user",
+                        "GET",
+                        "/seed/local-ip-demo",
+                        200,
+                        12 + idx,
+                        ip,
+                        geo["country"],
+                        geo["country_code"],
+                        geo["region"],
+                        geo["city"],
+                        geo["lat"],
+                        geo["lon"],
+                        "local-seed/1.0",
+                        "other",
+                        "local://seed",
+                    ),
+                )
+                inserted += 1
+
+            _meta_set(conn, marker_key, now_iso)
+    except Exception:
+        return {"inserted": 0, "skipped": 0}
+
+    return {"inserted": inserted, "skipped": skipped}
 
 
 def _prune(conn: sqlite3.Connection) -> None:
@@ -746,15 +891,11 @@ def get_ip_geo_queue_status() -> dict[str, Any]:
                     "leader": None,
                 }
 
-            counts = {
-                r["status"]: int(r["count"]) for r in conn.execute(
-                    """
+            counts = {r["status"]: int(r["count"]) for r in conn.execute("""
                     SELECT status, COUNT(*) AS count
                     FROM ip_geo_queue
                     GROUP BY status
-                    """.strip()
-                ).fetchall()
-            }
+                    """.strip()).fetchall()}
 
             due_now = conn.execute(
                 """
@@ -767,13 +908,11 @@ def get_ip_geo_queue_status() -> dict[str, Any]:
 
             leader = None
             if "ip_geo_leader_lock" in existing:
-                row = conn.execute(
-                    """
+                row = conn.execute("""
                     SELECT lock_key, locked_by, locked_until, updated_at
                     FROM ip_geo_leader_lock
                     WHERE lock_key='ip_geo_worker'
-                    """.strip()
-                ).fetchone()
+                    """.strip()).fetchone()
                 if row:
                     leader = {
                         "locked_by": row["locked_by"],

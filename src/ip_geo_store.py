@@ -274,7 +274,9 @@ def upsert_cache_success(
         return
 
 
-def upsert_cache_error(*, ip: str, raw_json: str | None, status_code: int | None, error: str) -> None:
+def upsert_cache_error(
+    *, ip: str, raw_json: str | None, status_code: int | None, error: str
+) -> None:
     ip = (ip or "").strip()
     if not ip:
         return

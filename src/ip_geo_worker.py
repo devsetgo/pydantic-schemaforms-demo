@@ -119,7 +119,7 @@ async def run_ip_geo_worker(*, stop_event: asyncio.Event) -> None:
             )
             await asyncio.to_thread(mark_job_done, ip=ip, locked_by=me)
         except GeoLookupError as ex:
-            delay = 60 if ex.status_code == 429 else min(60 * 15, 10 + 2 ** 6)
+            delay = 60 if ex.status_code == 429 else min(60 * 15, 10 + 2**6)
             await asyncio.to_thread(
                 upsert_cache_error,
                 ip=normalized,

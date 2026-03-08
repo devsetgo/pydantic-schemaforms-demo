@@ -20,7 +20,9 @@ class GeoLookupResult:
 
 
 class GeoLookupError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, raw_json: str | None = None):
+    def __init__(
+        self, message: str, *, status_code: int | None = None, raw_json: str | None = None
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.raw_json = raw_json
@@ -74,7 +76,9 @@ async def fetch_ip_api(ip: str) -> GeoLookupResult:
     if (data.get("status") or "").lower() != "success":
         msg = (data.get("message") or "fail").strip() or "fail"
         # Treat provider-level failures as non-fatal errors for retry policy.
-        raise GeoLookupError(msg, status_code=status_code, raw_json=json.dumps(data, ensure_ascii=False))
+        raise GeoLookupError(
+            msg, status_code=status_code, raw_json=json.dumps(data, ensure_ascii=False)
+        )
 
     # Store raw provider payload (JSON string) as requested.
     raw_json = json.dumps(data, ensure_ascii=False)

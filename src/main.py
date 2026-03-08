@@ -13,7 +13,7 @@ import asyncio
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
-from uuid import uuid4
+from uuid import UUID, uuid4
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -102,6 +102,7 @@ def handle_form_submission(
         "message": success_message if result.is_valid else None,
     }
 
+
 from .analytics import (
     extract_client_ip,
     extract_country,
@@ -114,6 +115,7 @@ from .analytics import (
     purge_all,
     record_error,
     record_request,
+    seed_local_ip_examples,
 )
 
 from .ip_geo_worker import ip_geo_enabled, ip_geo_worker_enabled, run_ip_geo_worker
@@ -370,6 +372,14 @@ def _user_id_cookie_max_age_seconds() -> int:
         return 180 * 24 * 60 * 60
 
 
+def _is_local_mode() -> bool:
+    for key in ("APP_ENV", "ENVIRONMENT", "ENV"):
+        raw = (os.environ.get(key) or "").strip().lower()
+        if raw in {"local", "dev", "development"}:
+            return True
+    return _truthy_env("LOCAL_MODE", default=False)
+
+
 def _get_or_create_request_id(request: Request) -> str:
     rid = (request.headers.get("x-request-id") or "").strip()
     return rid or uuid4().hex
@@ -400,6 +410,10 @@ def _request_log_context(request: Request) -> dict:
 async def _startup_init_analytics() -> None:
     try:
         init_db()
+
+        if _is_local_mode() and _truthy_env("ANALYTICS_SEED_LOCAL_IPS", default=True):
+            # One-time local seed for dashboard demo data.
+            seed_local_ip_examples(force=False)
     except Exception:
         # Analytics must never prevent the app from starting.
         return
@@ -461,6 +475,63 @@ def _dashboard_cookie_ttl_seconds() -> int:
         return max(60, int(raw))
     except Exception:
         return 30 * 60
+
+
+_dashboard_ip_modal_registry: dict[str, dict[str, Any]] = {}
+
+
+def _dashboard_ip_modal_prune(now: float | None = None) -> None:
+    ts = now if now is not None else time.time()
+    try:
+        for key in list(_dashboard_ip_modal_registry.keys()):
+            meta = _dashboard_ip_modal_registry.get(key) or {}
+            if float(meta.get("expires_at", 0.0)) <= ts:
+                _dashboard_ip_modal_registry.pop(key, None)
+    except Exception:
+        return
+
+
+def _dashboard_ip_modal_store(request: Request, payload: dict[str, Any]) -> str:
+    now = time.time()
+    _dashboard_ip_modal_prune(now)
+
+    key = uuid4().hex
+    _dashboard_ip_modal_registry[key] = {
+        "payload": payload,
+        "user_id": getattr(request.state, "user_id", None),
+        "expires_at": now + float(_dashboard_cookie_ttl_seconds()),
+    }
+    return key
+
+
+def _dashboard_ip_modal_lookup(request: Request, lookup_id: str) -> dict[str, Any] | None:
+    # Only accept canonical UUID-ish values.
+    try:
+        UUID(str(lookup_id))
+    except Exception:
+        return None
+
+    now = time.time()
+    _dashboard_ip_modal_prune(now)
+
+    meta = _dashboard_ip_modal_registry.get(str(lookup_id))
+    if not meta:
+        return None
+
+    expires_at = float(meta.get("expires_at", 0.0))
+    if expires_at <= now:
+        _dashboard_ip_modal_registry.pop(str(lookup_id), None)
+        return None
+
+    expected_user_id = meta.get("user_id")
+    current_user_id = getattr(request.state, "user_id", None)
+    if expected_user_id and current_user_id and expected_user_id != current_user_id:
+        return None
+
+    payload = meta.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return None
 
 
 def _request_is_https(request: Request) -> bool:
@@ -566,7 +637,7 @@ async def analytics_middleware(request: Request, call_next):
                 return PlainTextResponse(
                     content="Too Many Requests",
                     status_code=429,
-                    headers={"Retry-After": str(int(max(1, blocked_until - now)))}
+                    headers={"Retry-After": str(int(max(1, blocked_until - now)))},
                 )
 
             if score >= 14.0:
@@ -582,7 +653,7 @@ async def analytics_middleware(request: Request, call_next):
 
             # Tarpit: either a configured long delay, or a small delay that grows with score.
             forced = _antihack_tarpit_seconds()
-            delay = float(forced) if forced is not None else min(1.25, 0.05 * (score ** 1.35))
+            delay = float(forced) if forced is not None else min(1.25, 0.05 * (score**1.35))
 
             state.update({"score": score, "last": now, "blocked_until": 0.0})
             _abuse_state[key] = state
@@ -697,7 +768,9 @@ async def analytics_middleware(request: Request, call_next):
     return response
 
 
-def _log_user_action(request: Request, *, action: str, success: bool, details: dict | None = None) -> None:
+def _log_user_action(
+    request: Request, *, action: str, success: bool, details: dict | None = None
+) -> None:
     # Never throw from logging.
     try:
         payload = {
@@ -2360,6 +2433,34 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
 
     summary = get_summary(days=days, top_n=10)
     recent = get_recent_requests(limit=min(max(limit, 1), 500))
+
+    # Build per-row UUID lookups so HTMX details fetches don't expose raw IP query params.
+    for row in recent:
+        try:
+            payload = {
+                "ts": row.get("ts"),
+                "request_id": row.get("request_id"),
+                "path": row.get("path"),
+                "method": row.get("method"),
+                "status_code": row.get("status_code"),
+                "client_ip": row.get("client_ip"),
+                "location": row.get("location"),
+                "country": row.get("country"),
+                "country_code": row.get("country_code"),
+                "region": row.get("region"),
+                "city": row.get("city"),
+                "latitude": row.get("latitude"),
+                "longitude": row.get("longitude"),
+                "ip_geo_provider": row.get("ip_geo_provider"),
+                "ip_geo_fetched_at": row.get("ip_geo_fetched_at"),
+                "ip_geo_expires_at": row.get("ip_geo_expires_at"),
+                "ip_geo_raw_json": row.get("ip_geo_raw_json"),
+                "ip_geo_tooltip": row.get("ip_geo_tooltip"),
+            }
+            row["ip_lookup_id"] = _dashboard_ip_modal_store(request, payload)
+        except Exception:
+            row["ip_lookup_id"] = None
+
     recent_errors = get_recent_errors(limit=50)
     ip_geo = get_ip_geo_queue_status()
 
@@ -2377,6 +2478,24 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
             "ip_geo": ip_geo,
             "token_required": token_required,
             "ttl_min": ttl_min,
+        },
+    )
+
+
+@app.get("/dashboard/ip-modal/{lookup_id}", response_class=HTMLResponse, tags=["Analytics"])
+async def dashboard_ip_modal(request: Request, lookup_id: str):
+    _require_dashboard_auth(request)
+
+    payload = _dashboard_ip_modal_lookup(request, lookup_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="IP detail lookup not found")
+
+    return templates.TemplateResponse(
+        request,
+        "ip_modal.html",
+        {
+            "request": request,
+            "row": payload,
         },
     )
 
