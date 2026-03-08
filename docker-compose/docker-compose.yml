@@ -1,0 +1,52 @@
+version: "3.3"
+
+services:
+  pydanticSchemaforms:
+    image:  mikeryan56/demo-pydantic-schemaforms:26.2.27.1
+    env_file:
+      - .env
+    restart: always
+    healthcheck:
+      disable: true
+    ports:
+      - "5000"
+    networks:
+      - web
+    labels:
+      - "traefik.http.middlewares.pydanticschemaform-https.redirectscheme.scheme=https"
+      #### Labels define the behavior and rules of the traefik proxy for this container ####
+      - "traefik.enable=true" # <== Enable traefik to proxy this container
+      - "traefik.http.routers.pydanticschemaform-web.rule=Host(`pydantic-schemaforms.devsetgo.com`) || Host(`pydantic-schemaforms.devsetgo.com`)" # <== Your Domain Name goes here for the http rule
+      - "traefik.http.routers.pydanticschemaform-web.entrypoints=web" # <== Defining the entrypoint for http, **ref: line 30
+      - "traefik.http.routers.pydanticschemaform-web.middlewares=redirect@file" # <== This is a middleware to redirect to https
+      - "traefik.http.routers.pydanticschemaform-secured.rule=Host(`pydantic-schemaforms.devsetgo.com`) || Host(`pydantic-schemaforms.devsetgo.com`)" # <== Your Domain Name for the https rule 
+      - "traefik.http.routers.pydanticschemaform-secured.entrypoints=web-secured" # <== Defining entrypoint for https, **ref: line 31
+      - "traefik.http.routers.pydanticschemaform-secured.tls.certresolver=mytlschallenge" # <== Defining certsresolvers for https
+      # Traefik v3 explicit service definitions
+      - "traefik.http.services.pydanticschemaform.loadbalancer.server.port=5000"
+      - "traefik.http.routers.pydanticschemaform-web.service=pydanticschemaform"
+      - "traefik.http.routers.pydanticschemaform-secured.service=pydanticschemaform"
+
+    volumes:
+      - log-volume:/app/logs
+    # Removed the deploy section
+    # deploy:
+    #   replicas: 2
+    #   update_config:
+    #     parallelism: 1
+    #     delay: 30s
+    #   restart_policy:
+    #     condition: on-failure
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:5000/api/health/status || exit 1"]
+    #   interval: 1m30s
+    #   timeout: 10s
+    #   retries: 3
+networks:
+  web:
+    external: true
+volumes:
+  mikeryan:
+    external: false
+  log-volume:
+    driver: local
