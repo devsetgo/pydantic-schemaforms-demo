@@ -28,15 +28,17 @@ from fastapi.templating import Jinja2Templates
 import pydantic_schemaforms
 from pydantic_schemaforms import render_form_html_async
 from pydantic_schemaforms.enhanced_renderer import render_form_html, EnhancedFormRenderer
+from pydantic_schemaforms.form_data import parse_nested_form_data
 from pydantic_schemaforms.simple_material_renderer import SimpleMaterialRenderer
+from pydantic_schemaforms.validation import validate_form_data
 
 from .models import (
     CompleteShowcaseForm,
-    ContactForm,
     ContactInfoForm,
     Country,
     EmergencyContactModel,
     LayoutDemonstrationForm,
+    MediumContactForm as ContactForm,
     MinimalLoginForm,
     PersonalInfoForm,
     PetModel,
@@ -46,9 +48,59 @@ from .models import (
     TaskItem,
     TaskListForm,
     UserRegistrationForm,
-    handle_form_submission,
-    parse_nested_form_data,
 )
+
+
+def _install_examples_shared_models_alias() -> None:
+    """Provide an in-memory alias for `examples.shared_models`.
+
+    The upstream `pydantic_schemaforms` layout engine contains a fallback import
+    of `examples.shared_models` for its built-in layout demo fields.
+
+    This demo keeps canonical models in `src/models.py` and intentionally does
+    not ship an `examples/` directory.
+    """
+
+    import sys
+    import types
+
+    if "examples.shared_models" in sys.modules:
+        return
+
+    examples_pkg = sys.modules.get("examples")
+    if examples_pkg is None:
+        examples_pkg = types.ModuleType("examples")
+        # Mark as package-like so imports behave consistently.
+        examples_pkg.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["examples"] = examples_pkg
+
+    shared_models_mod = types.ModuleType("examples.shared_models")
+    shared_models_mod.PersonalInfoForm = PersonalInfoForm
+    shared_models_mod.ContactInfoForm = ContactInfoForm
+    shared_models_mod.PreferencesForm = PreferencesForm
+    shared_models_mod.TaskListForm = TaskListForm
+
+    sys.modules["examples.shared_models"] = shared_models_mod
+    setattr(examples_pkg, "shared_models", shared_models_mod)
+
+
+_install_examples_shared_models_alias()
+
+
+def handle_form_submission(
+    form_model_class: type,
+    form_data: dict[str, Any],
+    success_message: str | None = None,
+) -> dict[str, Any]:
+    """Validate incoming form data against a form model and normalize response."""
+    parsed_form_data = parse_nested_form_data(form_data)
+    result = validate_form_data(form_model_class, parsed_form_data)
+    return {
+        "success": bool(result.is_valid),
+        "data": result.data,
+        "errors": result.errors,
+        "message": success_message if result.is_valid else None,
+    }
 
 from .analytics import (
     extract_client_ip,
@@ -703,15 +755,15 @@ def _form_mapping():
         "self-contained": UserRegistrationForm,
     }
 
-    # Example parity: include the deeply nested organization models from /examples.
-    # These imports are intentionally lazy to keep base startup fast.
+    # Example parity: include the deeply nested organization model.
+    # This import is intentionally lazy to keep base startup fast.
     try:
-        from examples.shared_models import CompanyOrganizationForm
+        from .models import CompanyOrganizationForm
 
         mapping["organization"] = CompanyOrganizationForm
         mapping["organization-shared"] = CompanyOrganizationForm
     except Exception:
-        # Never fail the main app if examples are unavailable.
+        # Never fail the main app if optional nested models are unavailable.
         pass
 
     return mapping
@@ -1735,13 +1787,13 @@ async def organization_get(
     if prefill is not None:
         form_data = prefill
     elif demo:
-        from examples.nested_forms_example import create_comprehensive_sample_data
+        from .nested_forms_models import create_comprehensive_sample_data
 
         form_data = create_comprehensive_sample_data()
     else:
         form_data = {}
 
-    from examples.nested_forms_example import ComprehensiveTabbedForm
+    from .nested_forms_models import ComprehensiveTabbedForm
 
     form_html = await render_form_html_async(
         ComprehensiveTabbedForm,
@@ -1780,10 +1832,9 @@ async def organization_post(
     form_dict = dict(form_data)
     full_referer_path = get_referer_path(request)
 
-    from examples.nested_forms_example import ComprehensiveTabbedForm
-    from examples.shared_models import handle_form_submission as examples_handle_form_submission
+    from .nested_forms_models import ComprehensiveTabbedForm
 
-    result = examples_handle_form_submission(ComprehensiveTabbedForm, form_dict)
+    result = handle_form_submission(ComprehensiveTabbedForm, form_dict)
 
     if result.get("success"):
         return templates.TemplateResponse(
@@ -1842,13 +1893,13 @@ async def organization_shared_get(
     if prefill is not None:
         form_data = prefill
     elif demo:
-        from examples.shared_models import create_sample_nested_data
+        from .models import create_sample_nested_data
 
         form_data = create_sample_nested_data()
     else:
         form_data = {}
 
-    from examples.shared_models import CompanyOrganizationForm
+    from .models import CompanyOrganizationForm
 
     form_html = await render_form_html_async(
         CompanyOrganizationForm,
@@ -1866,7 +1917,7 @@ async def organization_shared_get(
         {
             "request": request,
             "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in shared_models.py.",
+            "description": "Reusable organization-only example powered by models in models.py.",
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -1887,10 +1938,9 @@ async def organization_shared_post(
     form_dict = dict(form_data)
     full_referer_path = get_referer_path(request)
 
-    from examples.shared_models import CompanyOrganizationForm
-    from examples.shared_models import handle_form_submission as examples_handle_form_submission
+    from .models import CompanyOrganizationForm
 
-    result = examples_handle_form_submission(CompanyOrganizationForm, form_dict)
+    result = handle_form_submission(CompanyOrganizationForm, form_dict)
 
     if result.get("success"):
         return templates.TemplateResponse(
@@ -1924,7 +1974,7 @@ async def organization_shared_post(
         {
             "request": request,
             "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in shared_models.py.",
+            "description": "Reusable organization-only example powered by models in models.py.",
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,

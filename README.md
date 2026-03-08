@@ -63,6 +63,6 @@ make smoke-live
 
 ## Notes
 
-- The canonical example implementation is also included under `examples/`.
+- The canonical example implementation is consolidated under `src/`.
 - If you change `PORT`, the live smoke test will follow it automatically via the Makefile.
 
