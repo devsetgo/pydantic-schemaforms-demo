@@ -1,6 +1,6 @@
 [project]
 name = "demo-pydantic-schemaforms"
-version = "26.3.7.6"
+version = "26.3.8.1"
 requires-python = ">=3.14"
 description = "Demo application showcasing pydantic-schemaforms library capabilities"
 readme = "README.md"
