@@ -44,7 +44,7 @@ def _cache_ttl_days() -> int:
 
 
 def _provider_name() -> str:
-    return (os.environ.get("IP_GEO_PROVIDER") or "ip-api").strip() or "ip-api"
+    return (os.environ.get("IP_GEO_PROVIDER") or "iplocation.net").strip() or "iplocation.net"
 
 
 def _connect() -> sqlite3.Connection:

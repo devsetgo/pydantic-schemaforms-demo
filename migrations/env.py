@@ -19,7 +19,7 @@ target_metadata = None
 
 
 def _db_url_from_env() -> str:
-    db_path = os.environ.get("ANALYTICS_DB_PATH", "./data/schemaforms_analytics.sqlite")
+    db_path = os.environ.get("ANALYTICS_DB_PATH", "./data/schemaforms_analytics.db")
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)

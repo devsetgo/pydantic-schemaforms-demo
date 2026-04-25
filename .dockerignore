@@ -1,69 +1,74 @@
-# Byte-compiled / optimized / DLL files
+# --- Files not needed by the Dockerfile ---
+# The image only copies: src/, requirements.txt, alembic.ini,
+# migrations/, scripts/docker_entrypoint.sh
+
+# Tests
+tests/
+
+# Dev / CI tooling
+.devcontainer/
+.bumpcalver/
+bumpcalver-history.json
+makefile
+pyproject.toml
+
+# Docs & meta
+README.md
+CONSOLIDATION_SUMMARY.md
+LICENSE
+
+# Local database & data directory
+data/
+
+# Docker compose configs
+docker-compose/
+
+# Environment files (secrets must not enter the image)
+.env
+.env-sample
+.env.local
+
+# Git
+.git/
+.gitignore
+.dockerignore
+
+# Python byte-compiled / cache
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
+.eggs/
+dist/
+build/
 
-# PyInstaller
-*.manifest
-*.spec
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
 
-# Unit test / coverage reports
+# Test / coverage artefacts
+.pytest_cache/
+.ruff_cache/
 htmlcov/
 .tox/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
 coverage.xml
+report.xml
 *.cover
 .hypothesis/
-.pytest_cache/
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
-
-# IDEs
+# Editor & OS noise
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS files
 .DS_Store
 Thumbs.db
 
-# Environment files
-.env
-.env.local
-
 # Logs
 *.log
-
-# Docker
-.dockerignore
-
-# Git
-.git/
-.gitignore

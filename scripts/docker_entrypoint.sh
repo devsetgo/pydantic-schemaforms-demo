@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${ANALYTICS_DB_PATH:=/data/schemaforms_analytics.sqlite}"
+: "${ANALYTICS_DB_PATH:=/data/schemaforms_analytics.db}"
 
 # Optional feature flags (safe defaults).
 : "${IP_GEO_ENABLED:=0}"

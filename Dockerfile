@@ -30,8 +30,8 @@ COPY scripts/docker_entrypoint.sh ./scripts/docker_entrypoint.sh
 RUN chmod +x ./scripts/docker_entrypoint.sh
 
 # Build-time migration smoke-test (uses a temp DB inside the image).
-RUN ANALYTICS_DB_PATH=/tmp/alembic_smoke.sqlite python -m alembic -c alembic.ini upgrade head \
-    && rm -f /tmp/alembic_smoke.sqlite
+RUN ANALYTICS_DB_PATH=/tmp/alembic_smoke.db python -m alembic -c alembic.ini upgrade head \
+    && rm -f /tmp/alembic_smoke.db
 
 # Persist analytics DB in a volume by default.
 VOLUME ["/data"]

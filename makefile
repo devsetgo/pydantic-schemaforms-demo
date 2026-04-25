@@ -145,7 +145,7 @@ kill:  # Kill any process running on the app port
 docker-build: ## Build the Docker image for the demo app
 	@echo "🔁 Alembic smoke-test (best-effort) (APP_VERSION=$(APP_VERSION))..."
 	@$(PYTHON) -c "import alembic" >/dev/null 2>&1 \
-		&& (ANALYTICS_DB_PATH=/tmp/schemaforms_alembic_smoke.sqlite $(PYTHON) -m alembic -c alembic.ini upgrade head && rm -f /tmp/schemaforms_alembic_smoke.sqlite) \
+		&& (ANALYTICS_DB_PATH=/tmp/schemaforms_alembic_smoke.db $(PYTHON) -m alembic -c alembic.ini upgrade head && rm -f /tmp/schemaforms_alembic_smoke.db) \
 		|| echo "(skipped) alembic not installed in host Python; Docker build will smoke-test migrations inside the image"
 	@set -e; cmd='$(DOCKER) build --no-cache -t $(REPONAME):$(APP_VERSION) .'; \
 		$(DOCKER) info >/dev/null 2>&1 && eval "$$cmd" \
@@ -159,7 +159,7 @@ docker-push: ## Push the Docker image to Docker Hub
 		|| (echo "ERROR: Docker daemon not accessible (permission denied). Try: newgrp $(DOCKER_GROUP) -c 'make docker-push'"; exit 2)
 
 docker-run: ## Run the Docker container for the demo app
-	@set -e; cmd='$(DOCKER) run -d -p $(PORT):$(PORT) -v $(SQLITE_PATH):/data -e ANALYTICS_DB_PATH=/data/schemaforms_analytics.sqlite -e IP_GEO_ENABLED=1 -e IP_GEO_WORKER_ENABLED=1 -e IP_GEO_RATE_LIMIT_PER_MIN=40 --name $(REPONAME)_container $(REPONAME):$(APP_VERSION)'; \
+	@set -e; cmd='$(DOCKER) run -d -p $(PORT):$(PORT) -v $(SQLITE_PATH):/data -e ANALYTICS_DB_PATH=/data/schemaforms_analytics.db -e IP_GEO_ENABLED=1 -e IP_GEO_WORKER_ENABLED=1 -e IP_GEO_RATE_LIMIT_PER_MIN=40 --name $(REPONAME)_container $(REPONAME):$(APP_VERSION)'; \
 		$(DOCKER) info >/dev/null 2>&1 && eval "$$cmd" \
 		|| (newgrp $(DOCKER_GROUP) -c "$(DOCKER) info" >/dev/null 2>&1 && newgrp $(DOCKER_GROUP) -c "$$cmd") \
 		|| (echo "ERROR: Docker daemon not accessible (permission denied). Try: newgrp $(DOCKER_GROUP) -c 'make docker-run'"; exit 2)
