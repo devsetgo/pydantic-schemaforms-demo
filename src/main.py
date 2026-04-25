@@ -2308,7 +2308,7 @@ async def health_check():
 # =========================================================================
 
 
-@app.get("/api/analytics/summary", tags=["Analytics"])
+@app.get("/api/analytics/summary", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_summary(request: Request, days: int = 1, top_n: int = 10):
     _require_dashboard_auth(request)
     summary = get_summary(days=days, top_n=top_n)
@@ -2323,32 +2323,32 @@ async def api_analytics_summary(request: Request, days: int = 1, top_n: int = 10
     }
 
 
-@app.get("/api/analytics/requests", tags=["Analytics"])
+@app.get("/api/analytics/requests", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_requests(request: Request, limit: int = 200):
     _require_dashboard_auth(request)
     return {"requests": get_recent_requests(limit=min(max(limit, 1), 1000))}
 
 
-@app.get("/api/analytics/errors", tags=["Analytics"])
+@app.get("/api/analytics/errors", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_errors(request: Request, limit: int = 200):
     _require_dashboard_auth(request)
     return {"errors": get_recent_errors(limit=min(max(limit, 1), 1000))}
 
 
-@app.get("/api/analytics/ip-geo", tags=["Analytics"])
+@app.get("/api/analytics/ip-geo", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_ip_geo(request: Request):
     _require_dashboard_auth(request)
     return {"ip_geo": get_ip_geo_queue_status()}
 
 
-@app.post("/api/analytics/purge", tags=["Analytics"])
+@app.post("/api/analytics/purge", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_purge(request: Request):
     _require_dashboard_auth(request)
     purge_all()
     return {"status": "ok"}
 
 
-@app.get("/central", response_class=HTMLResponse, tags=["Analytics"])
+@app.get("/central", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
 async def central_dashboard(request: Request):
     # Same token-to-cookie flow as /dashboard.
     required = _dashboard_token_required()
@@ -2410,7 +2410,7 @@ async def central_dashboard(request: Request):
     )
 
 
-@app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"])
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
 async def dashboard(request: Request, days: int = 1, limit: int = 50):
     # If a valid token is presented, set/refresh a 30-min cookie and redirect
     # to a clean URL (so the token doesn't stay in the address bar).
@@ -2482,7 +2482,12 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
     )
 
 
-@app.get("/dashboard/ip-modal/{lookup_id}", response_class=HTMLResponse, tags=["Analytics"])
+@app.get(
+    "/dashboard/ip-modal/{lookup_id}",
+    response_class=HTMLResponse,
+    tags=["Analytics"],
+    include_in_schema=False,
+)
 async def dashboard_ip_modal(request: Request, lookup_id: str):
     _require_dashboard_auth(request)
 
@@ -2500,7 +2505,7 @@ async def dashboard_ip_modal(request: Request, lookup_id: str):
     )
 
 
-@app.get("/dashboard/logout", tags=["Analytics"])
+@app.get("/dashboard/logout", tags=["Analytics"], include_in_schema=False)
 async def dashboard_logout(request: Request):
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie(key=_dashboard_cookie_name(), path="/")
