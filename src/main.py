@@ -1851,7 +1851,7 @@ async def organization_get(
     style: str = "bootstrap",
     data: str | None = None,
     demo: bool = True,
-    debug: bool = True,
+    debug: bool = False,
     show_timing: bool = True,
 ):
     """Comprehensive Tabbed Interface (6 tabs) from the original examples."""
@@ -1957,7 +1957,7 @@ async def organization_shared_get(
     style: str = "bootstrap",
     data: str | None = None,
     demo: bool = True,
-    debug: bool = True,
+    debug: bool = False,
     show_timing: bool = True,
 ):
     """Organization-only demo using reusable shared models from the examples."""

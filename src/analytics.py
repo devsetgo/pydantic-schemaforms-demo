@@ -43,7 +43,7 @@ def _parse_int(value: str | None, default: int) -> int:
 def get_db_path() -> str:
     # Default to a durable local path.
     # Docker sets ANALYTICS_DB_PATH to /data/... via scripts/docker_entrypoint.sh.
-    return os.environ.get("ANALYTICS_DB_PATH", "./data/schemaforms_analytics.sqlite")
+    return os.environ.get("ANALYTICS_DB_PATH", "./data/schemaforms_analytics.db")
 
 
 def get_retention_days() -> int:

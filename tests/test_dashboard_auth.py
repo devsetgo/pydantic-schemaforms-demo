@@ -34,6 +34,12 @@ def test_dashboard_fail_closed_when_token_missing(monkeypatch: pytest.MonkeyPatc
     resp = client.get("/api/analytics/errors")
     assert resp.status_code == 503
 
+    resp = client.post("/api/analytics/purge")
+    assert resp.status_code == 503
+
+    resp = client.get("/dashboard/ip-modal/00000000-0000-0000-0000-000000000000")
+    assert resp.status_code == 503
+
 
 def test_dashboard_requires_token_when_configured(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
@@ -56,6 +62,12 @@ def test_dashboard_requires_token_when_configured(monkeypatch: pytest.MonkeyPatc
     assert resp.status_code == 401
 
     resp = client.get("/api/analytics/errors")
+    assert resp.status_code == 401
+
+    resp = client.post("/api/analytics/purge")
+    assert resp.status_code == 401
+
+    resp = client.get("/dashboard/ip-modal/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 401
 
 
@@ -89,3 +101,10 @@ def test_dashboard_token_header_allows_api(monkeypatch: pytest.MonkeyPatch):
 
     resp = client.get("/api/analytics/errors", headers={"x-dashboard-token": "secret"})
     assert resp.status_code == 200
+
+    resp = client.post("/api/analytics/purge", headers={"x-dashboard-token": "secret"})
+    assert resp.status_code == 200
+
+    resp = client.get("/dashboard/ip-modal/00000000-0000-0000-0000-000000000000", headers={"x-dashboard-token": "secret"})
+    # Auth passes; 404 because the lookup_id does not exist in the registry.
+    assert resp.status_code == 404

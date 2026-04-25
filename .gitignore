@@ -3,7 +3,7 @@
 # bumpcalver-history.json
 
 # SQLite
-*.sqlite*
+*.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
