@@ -46,6 +46,34 @@
         font-size: 0.75rem;
         font-weight: 600;
     }
+    .csrf-protected-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-left: 0.5rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        background: #e8f8ee;
+        color: #146c43;
+        border: 1px solid #b7ebc6;
+        vertical-align: middle;
+    }
+    .hero-security-legend {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin-top: 0.8rem;
+        padding: 0.4rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #d1fae5;
+        border: 1px solid rgba(16, 185, 129, 0.45);
+        background: rgba(16, 185, 129, 0.16);
+    }
     @media (max-width: 991px) {
         body .hero-section {
             padding: 2.5rem 1.5rem;
@@ -76,6 +104,10 @@
                 Built with modern web frameworks and beautiful UI components<br>
                 <small>Plain HTML mode is available on all examples with <code>?style=none</code> (e.g. <a class="text-white" href="/login?style=none&demo=true&debug=true">/login?style=none</a>)</small>
             </p>
+            <div class="hero-security-legend">
+                <i class="bi bi-shield-lock-fill"></i>
+                Shield badge marks forms with CSRF protection enabled
+            </div>
         </div>
         <div>
             <img class="hero-logo" src="{{ url_for('static', path='pydantic-schemaform-logo.png') }}" alt="Pydantic Schemaform logo">
@@ -94,6 +126,12 @@
                     <i class="bi bi-person-plus-fill"></i>
                 </div>
                 <h5 class="card-title">User Registration</h5>
+                <div>
+                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
+                        <i class="bi bi-shield-lock-fill"></i>
+                        CSRF
+                    </span>
+                </div>
                 <p class="card-text flex-grow-1">
                     Simple user registration form with validation,
                     role selection, and responsive design.
@@ -255,6 +293,12 @@
                     <i class="bi bi-box-arrow-in-right"></i>
                 </div>
                 <h5 class="card-title">Login Form</h5>
+                <div>
+                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
+                        <i class="bi bi-shield-lock-fill"></i>
+                        CSRF
+                    </span>
+                </div>
                 <p class="card-text flex-grow-1">
                     Minimal login form demonstrating basic
                     authentication with form validation.
@@ -340,6 +384,12 @@
                     <i class="bi bi-diagram-3-fill"></i>
                 </div>
                 <h5 class="card-title">Comprehensive Tabs</h5>
+                <div>
+                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
+                        <i class="bi bi-shield-lock-fill"></i>
+                        CSRF
+                    </span>
+                </div>
                 <p class="card-text flex-grow-1">
                     <strong>6 Tabs!</strong> Organization (5 levels) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings
                 </p>

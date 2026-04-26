@@ -28,6 +28,13 @@
             <!-- Content -->
             <div class="p-4">
 
+                {% if security_highlight %}
+                <div class="alert alert-warning d-flex align-items-start" role="alert">
+                    <i class="bi bi-shield-lock-fill me-2"></i>
+                    <div>{{ security_highlight }}</div>
+                </div>
+                {% endif %}
+
 
                 <!-- Form -->
                 {{ form_html|safe }}
