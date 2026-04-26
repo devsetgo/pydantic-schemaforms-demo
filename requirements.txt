@@ -1,13 +1,13 @@
-alembic==1.18.4 # From 1.15.2 | Vulnerabilities: None
+alembic==1.18.4 # Vulnerabilities: None
 bumpcalver==2026.3.8.1 # Vulnerabilities: None
-devsetgo-lib==2025.10.4.2 # Vulnerabilities: None
-fastapi[all]==0.135.1 # From 0.134.0 | Vulnerabilities: None
+devsetgo-lib==2026.3.15.1 # From 2025.10.4.2 | Vulnerabilities: None
+fastapi[all]==0.136.1 # From 0.135.1 | Vulnerabilities: None
 httpx==0.28.1 # Vulnerabilities: None
 lack==23.3.0.6 # Vulnerabilities: None
-pre-commit==4.5.1 # Vulnerabilities: None
-pydantic-schemaforms==26.1.8b0 # Vulnerabilities: None
-pytest==9.0.2 # Vulnerabilities: None
-python-dotenv==1.2.2 # From 1.2.1 | Vulnerabilities: None
-ruff==0.15.5 # From 0.15.4 | Vulnerabilities: None
+pre-commit==4.6.0 # From 4.5.1 | Vulnerabilities: None
+pydantic-schemaforms==26.2.1b0 # From 26.1.8b0 | Vulnerabilities: None
+pytest==9.0.3 # From 9.0.2 | Vulnerabilities: None
+python-dotenv==1.2.2 # Vulnerabilities: None
+ruff==0.15.12 # From 0.15.5 | Vulnerabilities: None
 silly==1.1.0 # Vulnerabilities: None
-SQLAlchemy==2.0.48 # From 2.0.39 | Vulnerabilities: None
+SQLAlchemy==2.0.49 # From 2.0.48 | Vulnerabilities: None
