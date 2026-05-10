@@ -1,0 +1,74 @@
+# Copy this file to pydantic-schemaforms-demo at:
+#   .github/workflows/sync-from-library.yml
+
+name: Sync from library
+
+on:
+  repository_dispatch:
+    types: [library-sync]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout demo repo
+        uses: actions/checkout@v5
+
+      - name: Checkout library at dispatched SHA
+        uses: actions/checkout@v5
+        with:
+          repository: devsetgo/pydantic-schemaforms
+          ref: ${{ github.event.client_payload.sha }}
+          path: _library
+
+      - name: Copy synced files
+        run: |
+          # Form models — review the PR diff carefully:
+          # src/models.py may have demo-specific additions (e.g. ContactForm)
+          # that are not in the library version. Check before merging.
+          cp _library/examples/shared_models.py src/models.py
+
+          # Base templates (analytics dashboard pages are not in the library
+          # and will not be touched by this step)
+          for tpl in form.html home.html success.html shared_base.html 404.html 500.html; do
+            if [ -f "_library/examples/templates/$tpl" ]; then
+              cp "_library/examples/templates/$tpl" "src/templates/$tpl"
+            fi
+          done
+
+          rm -rf _library
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          branch: sync/library-${{ github.event.client_payload.sha }}
+          commit-message: "sync: update from library @ ${{ github.event.client_payload.sha }}"
+          title: "sync: library update — ${{ github.event.client_payload.message }}"
+          body: |
+            Automated sync from [`pydantic-schemaforms`](https://github.com/devsetgo/pydantic-schemaforms).
+
+            **Library commit:** `${{ github.event.client_payload.sha }}`
+            **Commit message:** ${{ github.event.client_payload.message }}
+
+            ### Files updated
+
+            | Demo path | Library source |
+            |---|---|
+            | `src/models.py` | `examples/shared_models.py` |
+            | `src/templates/form.html` | `examples/templates/form.html` |
+            | `src/templates/home.html` | `examples/templates/home.html` |
+            | `src/templates/success.html` | `examples/templates/success.html` |
+            | `src/templates/shared_base.html` | `examples/templates/shared_base.html` |
+            | `src/templates/404.html` | `examples/templates/404.html` |
+            | `src/templates/500.html` | `examples/templates/500.html` |
+
+            > **Review carefully before merging:** `src/models.py` may contain
+            > demo-specific models (e.g. `ContactForm`) that do not exist in the
+            > library. If the diff removes them, add them back before merging.
+          labels: dependencies
+          draft: false

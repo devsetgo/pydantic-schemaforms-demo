@@ -2,6 +2,11 @@
 .bumpcalver/
 # bumpcalver-history.json
 
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -9,10 +9,13 @@ import json
 import logging
 import os
 import re
+import asyncio
+import hmac
+import secrets
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
-from uuid import uuid4
+from uuid import UUID, uuid4
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -23,19 +26,22 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 import pydantic_schemaforms
 from pydantic_schemaforms import render_form_html_async
 from pydantic_schemaforms.enhanced_renderer import render_form_html, EnhancedFormRenderer
+from pydantic_schemaforms.form_data import parse_nested_form_data
 from pydantic_schemaforms.simple_material_renderer import SimpleMaterialRenderer
+from pydantic_schemaforms.validation import validate_form_data
 
 from .models import (
     CompleteShowcaseForm,
-    ContactForm,
     ContactInfoForm,
     Country,
     EmergencyContactModel,
     LayoutDemonstrationForm,
+    MediumContactForm as ContactForm,
     MinimalLoginForm,
     PersonalInfoForm,
     PetModel,
@@ -45,13 +51,66 @@ from .models import (
     TaskItem,
     TaskListForm,
     UserRegistrationForm,
-    handle_form_submission,
-    parse_nested_form_data,
 )
+
+
+def _install_examples_shared_models_alias() -> None:
+    """Provide an in-memory alias for `examples.shared_models`.
+
+    The upstream `pydantic_schemaforms` layout engine contains a fallback import
+    of `examples.shared_models` for its built-in layout demo fields.
+
+    This demo keeps canonical models in `src/models.py` and intentionally does
+    not ship an `examples/` directory.
+    """
+
+    import sys
+    import types
+
+    if "examples.shared_models" in sys.modules:
+        return
+
+    examples_pkg = sys.modules.get("examples")
+    if examples_pkg is None:
+        examples_pkg = types.ModuleType("examples")
+        # Mark as package-like so imports behave consistently.
+        examples_pkg.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["examples"] = examples_pkg
+
+    shared_models_mod = types.ModuleType("examples.shared_models")
+    shared_models_mod.PersonalInfoForm = PersonalInfoForm
+    shared_models_mod.ContactInfoForm = ContactInfoForm
+    shared_models_mod.PreferencesForm = PreferencesForm
+    shared_models_mod.TaskListForm = TaskListForm
+
+    sys.modules["examples.shared_models"] = shared_models_mod
+    setattr(examples_pkg, "shared_models", shared_models_mod)
+
+
+_install_examples_shared_models_alias()
+
+
+def handle_form_submission(
+    form_model_class: type,
+    form_data: dict[str, Any],
+    success_message: str | None = None,
+) -> dict[str, Any]:
+    """Validate incoming form data against a form model and normalize response."""
+    parsed_form_data = parse_nested_form_data(form_data)
+    result = validate_form_data(form_model_class, parsed_form_data)
+    return {
+        "success": bool(result.is_valid),
+        "data": result.data,
+        "errors": result.errors,
+        "message": success_message if result.is_valid else None,
+    }
+
 
 from .analytics import (
     extract_client_ip,
     extract_country,
+    get_db_path,
+    get_ip_geo_queue_status,
     get_recent_errors,
     get_recent_requests,
     get_summary,
@@ -59,7 +118,10 @@ from .analytics import (
     purge_all,
     record_error,
     record_request,
+    seed_local_ip_examples,
 )
+
+from .ip_geo_worker import ip_geo_enabled, ip_geo_worker_enabled, run_ip_geo_worker
 
 # ============================================================================
 # APP SETUP
@@ -86,6 +148,68 @@ app = FastAPI(
         },
     ],
 )
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=(os.getenv("SCHEMAFORMS_SESSION_SECRET") or "dev-only-change-me"),
+    same_site="lax",
+    https_only=False,
+)
+
+LOGIN_CSRF_SESSION_KEY = "login_csrf_token"
+REGISTER_CSRF_SESSION_KEY = "register_csrf_token"
+ORGANIZATION_CSRF_SESSION_KEY = "organization_csrf_token"
+
+
+def _csrf_highlight_message() -> str:
+    return "CSRF protection active: token issued on GET and verified before form validation on POST."
+
+
+def _issue_csrf_token(request: Request, session_key: str) -> str:
+    token = secrets.token_urlsafe(32)
+    request.session[session_key] = token
+    return token
+
+
+def _verify_csrf_token(request: Request, session_key: str, submitted_token: Any) -> bool:
+    expected_token = request.session.get(session_key)
+    if not expected_token or not submitted_token:
+        return False
+    return hmac.compare_digest(str(expected_token), str(submitted_token))
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+async def robots_txt(request: Request) -> PlainTextResponse:
+    base = str(request.base_url).rstrip("/")
+    body = "\n".join(
+        [
+            "User-agent: *",
+            "Disallow: /api/",
+            "Disallow: /docs",
+            "Disallow: /openapi.json",
+            "Disallow: /dashboard",
+            "Disallow: /static/",
+            "Allow: /",
+            "",
+            f"# Host: {base}",
+        ]
+    )
+    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/security", response_class=PlainTextResponse, include_in_schema=False)
+async def security_notice() -> PlainTextResponse:
+    body = "\n".join(
+        [
+            "Nothing to see here.",
+            "",
+            "If you are scanning for exposed logs/.env/credentials: this demo app does not store them under the web root.",
+            "Please stop probing random paths.",
+            "",
+            "(Legit issue? Contact the site owner.)",
+        ]
+    )
+    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
 
 
 def _load_dotenv_if_present() -> None:
@@ -158,6 +282,112 @@ def _configure_logging() -> logging.Logger:
 logger = _configure_logging()
 
 
+def _antihack_enabled() -> bool:
+    raw = (os.environ.get("ANTISCAN_ENABLED") or "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _antihack_redirect_url() -> str | None:
+    raw = os.environ.get("ANTISCAN_REDIRECT_URL")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    return raw or None
+
+
+def _antihack_tarpit_seconds() -> float | None:
+    raw = os.environ.get("ANTISCAN_TARPIT_SECONDS")
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except Exception:
+        return None
+    if v <= 0:
+        return None
+    # Safety cap: holding connections open for too long can self-DoS.
+    return min(v, 600.0)
+
+
+def _antihack_max_inflight_per_ip() -> int:
+    raw = os.environ.get("ANTISCAN_MAX_INFLIGHT_PER_IP")
+    try:
+        if raw is None:
+            return 1
+        return max(1, int(raw))
+    except Exception:
+        return 1
+
+
+def _looks_like_scan_path(path: str) -> bool:
+    p = (path or "/").strip()
+    if not p.startswith("/"):
+        p = "/" + p
+    p_low = p.lower()
+
+    # Keep false positives low: match known scanner probes.
+    prefixes = (
+        "/.aws/",
+        "/aws/",
+        "/.git",
+        "/.hg",
+        "/.svn",
+        "/.circleci/",
+        "/.travis",
+        "/.bitbucket/",
+        "/.env",
+        "/wp-",
+        "/phpmyadmin",
+        "/_profiler",
+        "/app_dev.php",
+        "/server-status",
+        "/server-info",
+        "/cgi-bin/",
+        "/horizon/",
+        "/storage/logs/",
+        "/vendor/",
+        "/debug",
+        "/manage/env",
+    )
+    if p_low.startswith(prefixes):
+        return True
+
+    # File probes.
+    if p_low in {"/phpinfo", "/phpinfo.php", "/info.php", "/test.php", "/error.log", "/debug.log"}:
+        return True
+
+    # Common sensitive file extensions.
+    if re.search(r"\.(?:php|asp|aspx|jsp|cgi|pl|sh|bak|old|swp)$", p_low):
+        return True
+
+    # Obvious secret/config filenames.
+    if re.search(r"(?:secret|credential|config|settings)\.(?:ya?ml|json|ini|env)$", p_low):
+        return True
+
+    return False
+
+
+# Simple in-memory tarpit/block for scanners.
+# Note: per-process only (fine for a demo; use a reverse proxy/WAF for production).
+_abuse_state: dict[str, dict[str, float]] = {}
+
+
+def _abuse_key(request: Request) -> str:
+    ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
+    ip = (ip or "unknown").strip() or "unknown"
+    return ip
+
+
+def _abuse_gc(now: float) -> None:
+    # Best-effort cleanup: drop entries not seen in ~1h.
+    try:
+        for k in list(_abuse_state.keys()):
+            if (now - float(_abuse_state[k].get("last", 0.0))) > 3600:
+                _abuse_state.pop(k, None)
+    except Exception:
+        return
+
+
 def _user_id_cookie_name() -> str:
     return (os.environ.get("USER_ID_COOKIE_NAME") or "schemaforms_uid").strip() or "schemaforms_uid"
 
@@ -171,6 +401,14 @@ def _user_id_cookie_max_age_seconds() -> int:
         return max(60, int(raw))
     except Exception:
         return 180 * 24 * 60 * 60
+
+
+def _is_local_mode() -> bool:
+    for key in ("APP_ENV", "ENVIRONMENT", "ENV"):
+        raw = (os.environ.get(key) or "").strip().lower()
+        if raw in {"local", "dev", "development"}:
+            return True
+    return _truthy_env("LOCAL_MODE", default=False)
 
 
 def _get_or_create_request_id(request: Request) -> str:
@@ -203,17 +441,56 @@ def _request_log_context(request: Request) -> dict:
 async def _startup_init_analytics() -> None:
     try:
         init_db()
+
+        if _is_local_mode() and _truthy_env("ANALYTICS_SEED_LOCAL_IPS", default=True):
+            # One-time local seed for dashboard demo data.
+            seed_local_ip_examples(force=False)
     except Exception:
         # Analytics must never prevent the app from starting.
         return
 
+    # IP geo lookup runs as a background task (single-leader across workers).
+    try:
+        if ip_geo_enabled() and ip_geo_worker_enabled():
+            stop_event = asyncio.Event()
+            task = asyncio.create_task(run_ip_geo_worker(stop_event=stop_event))
+            app.state.ip_geo_stop_event = stop_event
+            app.state.ip_geo_task = task
+    except Exception:
+        # Never block startup for this optional feature.
+        return
 
-def _dashboard_token_required() -> str | None:
-    token = os.environ.get("DASHBOARD_TOKEN")
-    if token is None:
-        return None
-    token = token.strip()
-    return token or None
+
+@app.on_event("shutdown")
+async def _shutdown_ip_geo_worker() -> None:
+    try:
+        stop_event = getattr(app.state, "ip_geo_stop_event", None)
+        task = getattr(app.state, "ip_geo_task", None)
+        if stop_event is not None:
+            try:
+                stop_event.set()
+            except Exception:
+                pass
+        if task is not None:
+            try:
+                task.cancel()
+            except Exception:
+                pass
+    except Exception:
+        return
+
+
+def _dashboard_token_required() -> str:
+    """Return the required dashboard token.
+
+    Security posture: fail closed.
+    - If DASHBOARD_TOKEN is not configured, dashboards/APIs must not be public.
+    """
+
+    token = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="DASHBOARD_TOKEN must be set")
+    return token
 
 
 def _dashboard_cookie_name() -> str:
@@ -231,6 +508,63 @@ def _dashboard_cookie_ttl_seconds() -> int:
         return 30 * 60
 
 
+_dashboard_ip_modal_registry: dict[str, dict[str, Any]] = {}
+
+
+def _dashboard_ip_modal_prune(now: float | None = None) -> None:
+    ts = now if now is not None else time.time()
+    try:
+        for key in list(_dashboard_ip_modal_registry.keys()):
+            meta = _dashboard_ip_modal_registry.get(key) or {}
+            if float(meta.get("expires_at", 0.0)) <= ts:
+                _dashboard_ip_modal_registry.pop(key, None)
+    except Exception:
+        return
+
+
+def _dashboard_ip_modal_store(request: Request, payload: dict[str, Any]) -> str:
+    now = time.time()
+    _dashboard_ip_modal_prune(now)
+
+    key = uuid4().hex
+    _dashboard_ip_modal_registry[key] = {
+        "payload": payload,
+        "user_id": getattr(request.state, "user_id", None),
+        "expires_at": now + float(_dashboard_cookie_ttl_seconds()),
+    }
+    return key
+
+
+def _dashboard_ip_modal_lookup(request: Request, lookup_id: str) -> dict[str, Any] | None:
+    # Only accept canonical UUID-ish values.
+    try:
+        UUID(str(lookup_id))
+    except Exception:
+        return None
+
+    now = time.time()
+    _dashboard_ip_modal_prune(now)
+
+    meta = _dashboard_ip_modal_registry.get(str(lookup_id))
+    if not meta:
+        return None
+
+    expires_at = float(meta.get("expires_at", 0.0))
+    if expires_at <= now:
+        _dashboard_ip_modal_registry.pop(str(lookup_id), None)
+        return None
+
+    expected_user_id = meta.get("user_id")
+    current_user_id = getattr(request.state, "user_id", None)
+    if expected_user_id and current_user_id and expected_user_id != current_user_id:
+        return None
+
+    payload = meta.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
 def _request_is_https(request: Request) -> bool:
     xf_proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
     if xf_proto:
@@ -246,8 +580,9 @@ def _token_from_request(request: Request) -> str:
 
 
 def _maybe_set_dashboard_cookie_from_token(request: Request, response: Response) -> None:
-    required = _dashboard_token_required()
-    if not required:
+    try:
+        required = _dashboard_token_required()
+    except HTTPException:
         return
 
     presented = _token_from_request(request)
@@ -270,8 +605,6 @@ def _maybe_set_dashboard_cookie_from_token(request: Request, response: Response)
 
 def _require_dashboard_auth(request: Request) -> None:
     required = _dashboard_token_required()
-    if not required:
-        return
 
     # Allow either header auth, query param, or an HttpOnly cookie.
     presented = _token_from_request(request)
@@ -297,6 +630,88 @@ async def analytics_middleware(request: Request, call_next):
     # Keep noise down.
     if path.startswith("/static") or path in {"/favicon.ico"}:
         return await call_next(request)
+
+    # Inconvenience obvious scanner probes without impacting legitimate 404s.
+    if _antihack_enabled() and _looks_like_scan_path(path):
+        now = time.time()
+        key = _abuse_key(request)
+        state = _abuse_state.get(key) or {"score": 0.0, "last": now, "blocked_until": 0.0}
+
+        # Limit concurrent tarpits per IP to avoid tying up the server.
+        inflight = int(float(state.get("inflight", 0.0) or 0.0))
+        max_inflight = _antihack_max_inflight_per_ip()
+        if inflight >= max_inflight:
+            state.update({"last": now, "inflight": float(inflight)})
+            _abuse_state[key] = state
+            _abuse_gc(now)
+            return PlainTextResponse(
+                content="Too Many Requests",
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+
+        state["inflight"] = float(inflight + 1)
+        _abuse_state[key] = state
+
+        try:
+            # Decay score over time to avoid permanent penalty.
+            last = float(state.get("last", now))
+            score = float(state.get("score", 0.0))
+            score = max(0.0, score - (now - last) * 0.35)
+
+            score += 2.0
+            blocked_until = float(state.get("blocked_until", 0.0))
+            if blocked_until and now < blocked_until:
+                state.update({"score": score, "last": now, "blocked_until": blocked_until})
+                _abuse_state[key] = state
+                _abuse_gc(now)
+                return PlainTextResponse(
+                    content="Too Many Requests",
+                    status_code=429,
+                    headers={"Retry-After": str(int(max(1, blocked_until - now)))},
+                )
+
+            if score >= 14.0:
+                blocked_until = now + 60 * 30
+                state.update({"score": score, "last": now, "blocked_until": blocked_until})
+                _abuse_state[key] = state
+                _abuse_gc(now)
+                return PlainTextResponse(
+                    content="Too Many Requests",
+                    status_code=429,
+                    headers={"Retry-After": "1800"},
+                )
+
+            # Tarpit: either a configured long delay, or a small delay that grows with score.
+            forced = _antihack_tarpit_seconds()
+            delay = float(forced) if forced is not None else min(1.25, 0.05 * (score**1.35))
+
+            state.update({"score": score, "last": now, "blocked_until": 0.0})
+            _abuse_state[key] = state
+            _abuse_gc(now)
+            try:
+                await asyncio.sleep(delay)
+            except Exception:
+                pass
+
+            redirect_url = _antihack_redirect_url() or "/security"
+            # If you set a redirect URL, keep it explicit and small.
+            # Avoid huge downloads or third-party sites (wastes bandwidth and can backfire).
+            if redirect_url:
+                try:
+                    return RedirectResponse(url=redirect_url, status_code=302)
+                except Exception:
+                    pass
+
+            return PlainTextResponse(content="Not Found", status_code=404)
+        finally:
+            try:
+                s = _abuse_state.get(key) or state
+                cur = int(float(s.get("inflight", 1.0) or 1.0))
+                s["inflight"] = float(max(0, cur - 1))
+                _abuse_state[key] = s
+            except Exception:
+                pass
 
     try:
         response = await call_next(request)
@@ -384,7 +799,9 @@ async def analytics_middleware(request: Request, call_next):
     return response
 
 
-def _log_user_action(request: Request, *, action: str, success: bool, details: dict | None = None) -> None:
+def _log_user_action(
+    request: Request, *, action: str, success: bool, details: dict | None = None
+) -> None:
     # Never throw from logging.
     try:
         payload = {
@@ -442,15 +859,15 @@ def _form_mapping():
         "self-contained": UserRegistrationForm,
     }
 
-    # Example parity: include the deeply nested organization models from /examples.
-    # These imports are intentionally lazy to keep base startup fast.
+    # Example parity: include the deeply nested organization model.
+    # This import is intentionally lazy to keep base startup fast.
     try:
-        from examples.shared_models import CompanyOrganizationForm
+        from .models import CompanyOrganizationForm
 
         mapping["organization"] = CompanyOrganizationForm
         mapping["organization-shared"] = CompanyOrganizationForm
     except Exception:
-        # Never fail the main app if examples are unavailable.
+        # Never fail the main app if optional nested models are unavailable.
         pass
 
     return mapping
@@ -558,6 +975,8 @@ async def login_get(
     show_timing: bool = True,
 ):
     """Login form page (GET)."""
+    csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
+
     prefill = _parse_json_data_param(data)
     if prefill is not None:
         form_data = prefill
@@ -571,6 +990,9 @@ async def login_get(
         framework=style,
         form_data=form_data,
         submit_url=f"/login?style={style}",
+        csrf_mode="required-provider",
+        csrf_token_provider=csrf_token,
+        csrf_field_name="csrf_token",
         debug=debug,
         show_timing=show_timing,
         enable_logging=False,
@@ -582,7 +1004,8 @@ async def login_get(
         {
             "request": request,
             "title": "Login - Simple Form",
-            "description": "Demonstrates basic form fields and validation",
+            "description": "Demonstrates basic form fields, validation, and CSRF protection",
+            "security_highlight": _csrf_highlight_message(),
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -604,6 +1027,43 @@ async def login_post(
     form_data = await request.form()
     form_dict = dict(form_data)
 
+    submitted_csrf_token = form_dict.pop("csrf_token", None)
+    csrf_error = "CSRF verification failed. Refresh the page and submit again."
+    if not _verify_csrf_token(request, LOGIN_CSRF_SESSION_KEY, submitted_csrf_token):
+        csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
+        parsed_data = parse_nested_form_data(form_dict)
+        form_html = await render_form_html_async(
+            MinimalLoginForm,
+            framework=style,
+            form_data=parsed_data,
+            errors={"form": csrf_error},
+            submit_url=f"/login?style={style}",
+            csrf_mode="required-provider",
+            csrf_token_provider=csrf_token,
+            csrf_field_name="csrf_token",
+            debug=debug,
+            show_timing=show_timing,
+            enable_logging=True,
+        )
+        return templates.TemplateResponse(
+            request,
+            "form.html",
+            {
+                "request": request,
+                "title": "Login - Simple Form",
+                "description": "Demonstrates basic form fields, validation, and CSRF protection",
+                "security_highlight": _csrf_highlight_message(),
+                "framework": "fastapi",
+                "framework_name": "FastAPI (Async)",
+                "framework_type": style,
+                "form_html": form_html,
+                "errors": {"form": csrf_error},
+                "form_action": "/login",
+                "form_method": "post",
+            },
+            status_code=403,
+        )
+
     result = handle_form_submission(MinimalLoginForm, form_dict)
 
     _log_user_action(
@@ -618,6 +1078,7 @@ async def login_post(
     full_referer_path = get_referer_path(request)
 
     if result["success"]:
+        request.session.pop(LOGIN_CSRF_SESSION_KEY, None)
         return templates.TemplateResponse(
             request,
             "success.html",
@@ -632,12 +1093,16 @@ async def login_post(
             },
         )
     else:
+        csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
         form_html = await render_form_html_async(
             MinimalLoginForm,
             framework=style,
             form_data=form_dict,
             errors=result["errors"],
             submit_url=f"/login?style={style}",
+            csrf_mode="required-provider",
+            csrf_token_provider=csrf_token,
+            csrf_field_name="csrf_token",
             debug=debug,
             show_timing=show_timing,
             enable_logging=True,
@@ -649,7 +1114,8 @@ async def login_post(
             {
                 "request": request,
                 "title": "Login - Simple Form",
-                "description": "Demonstrates basic form fields and validation",
+                "description": "Demonstrates basic form fields, validation, and CSRF protection",
+                "security_highlight": _csrf_highlight_message(),
                 "framework": "fastapi",
                 "framework_name": "FastAPI (Async)",
                 "framework_type": style,
@@ -676,6 +1142,8 @@ async def register_get(
     show_timing: bool = True,
 ):
     """User registration form page (GET)."""
+    csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
+
     prefill = _parse_json_data_param(data)
     if prefill is not None:
         form_data = prefill
@@ -696,6 +1164,9 @@ async def register_get(
         framework=style,
         form_data=form_data,
         submit_url=f"/register?style={style}",
+        csrf_mode="required-provider",
+        csrf_token_provider=csrf_token,
+        csrf_field_name="csrf_token",
         debug=debug,
         show_timing=show_timing,
         enable_logging=True,
@@ -707,7 +1178,8 @@ async def register_get(
         {
             "request": request,
             "title": "User Registration - Medium Form",
-            "description": "Demonstrates multiple field types and validation",
+            "description": "Demonstrates multiple field types, validation, and CSRF protection",
+            "security_highlight": _csrf_highlight_message(),
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -729,6 +1201,43 @@ async def register_post(
     form_data = await request.form()
     form_dict = dict(form_data)
 
+    submitted_csrf_token = form_dict.pop("csrf_token", None)
+    csrf_error = "CSRF verification failed. Refresh the page and submit again."
+    if not _verify_csrf_token(request, REGISTER_CSRF_SESSION_KEY, submitted_csrf_token):
+        csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
+        parsed_data = parse_nested_form_data(form_dict)
+        form_html = await render_form_html_async(
+            UserRegistrationForm,
+            framework=style,
+            form_data=parsed_data,
+            errors={"form": csrf_error},
+            submit_url=f"/register?style={style}",
+            csrf_mode="required-provider",
+            csrf_token_provider=csrf_token,
+            csrf_field_name="csrf_token",
+            debug=debug,
+            show_timing=show_timing,
+            enable_logging=True,
+        )
+        return templates.TemplateResponse(
+            request,
+            "form.html",
+            {
+                "request": request,
+                "title": "User Registration - Medium Form",
+                "description": "Demonstrates multiple field types, validation, and CSRF protection",
+                "security_highlight": _csrf_highlight_message(),
+                "framework": "fastapi",
+                "framework_name": "FastAPI (Async)",
+                "framework_type": style,
+                "form_html": form_html,
+                "errors": {"form": csrf_error},
+                "form_action": "/register",
+                "form_method": "post",
+            },
+            status_code=403,
+        )
+
     result = handle_form_submission(UserRegistrationForm, form_dict)
 
     _log_user_action(
@@ -744,6 +1253,7 @@ async def register_post(
     full_referer_path = get_referer_path(request)
 
     if result["success"]:
+        request.session.pop(REGISTER_CSRF_SESSION_KEY, None)
         return templates.TemplateResponse(
             request,
             "success.html",
@@ -758,12 +1268,16 @@ async def register_post(
             },
         )
     else:
+        csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
         form_html = await render_form_html_async(
             UserRegistrationForm,
             framework=style,
             form_data=form_dict,
             errors=result["errors"],
             submit_url=f"/register?style={style}",
+            csrf_mode="required-provider",
+            csrf_token_provider=csrf_token,
+            csrf_field_name="csrf_token",
             debug=debug,
             show_timing=show_timing,
             enable_logging=False,
@@ -775,7 +1289,8 @@ async def register_post(
             {
                 "request": request,
                 "title": "User Registration - Medium Form",
-                "description": "Demonstrates multiple field types and validation",
+                "description": "Demonstrates multiple field types, validation, and CSRF protection",
+                "security_highlight": _csrf_highlight_message(),
                 "framework": "fastapi",
                 "framework_name": "FastAPI (Async)",
                 "framework_type": style,
@@ -1465,28 +1980,33 @@ async def organization_get(
     style: str = "bootstrap",
     data: str | None = None,
     demo: bool = True,
-    debug: bool = True,
+    debug: bool = False,
     show_timing: bool = True,
 ):
     """Comprehensive Tabbed Interface (6 tabs) from the original examples."""
+    csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
+
     prefill = _parse_json_data_param(data)
 
     if prefill is not None:
         form_data = prefill
     elif demo:
-        from examples.nested_forms_example import create_comprehensive_sample_data
+        from .nested_forms_models import create_comprehensive_sample_data
 
         form_data = create_comprehensive_sample_data()
     else:
         form_data = {}
 
-    from examples.nested_forms_example import ComprehensiveTabbedForm
+    from .nested_forms_models import ComprehensiveTabbedForm
 
     form_html = await render_form_html_async(
         ComprehensiveTabbedForm,
         framework=style,
         form_data=form_data,
         submit_url=f"/organization?style={style}",
+        csrf_mode="required-provider",
+        csrf_token_provider=csrf_token,
+        csrf_field_name="csrf_token",
         debug=debug,
         show_timing=show_timing,
         enable_logging=True,
@@ -1498,7 +2018,8 @@ async def organization_get(
         {
             "request": request,
             "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
-            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings",
+            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
+            "security_highlight": _csrf_highlight_message(),
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -1517,14 +2038,57 @@ async def organization_post(
     """Handle submission for the 6-tab comprehensive nested example."""
     form_data = await request.form()
     form_dict = dict(form_data)
+
+    submitted_csrf_token = form_dict.pop("csrf_token", None)
+    csrf_error = "CSRF verification failed. Refresh the page and submit again."
+    if not _verify_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY, submitted_csrf_token):
+        csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
+        try:
+            parsed_form_data = parse_nested_form_data(form_dict)
+        except Exception:
+            parsed_form_data = form_dict
+
+        from .nested_forms_models import ComprehensiveTabbedForm
+
+        form_html = await render_form_html_async(
+            ComprehensiveTabbedForm,
+            framework=style,
+            form_data=parsed_form_data,
+            errors={"form": csrf_error},
+            submit_url=f"/organization?style={style}",
+            csrf_mode="required-provider",
+            csrf_token_provider=csrf_token,
+            csrf_field_name="csrf_token",
+            debug=debug,
+            show_timing=show_timing,
+            enable_logging=False,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "form.html",
+            {
+                "request": request,
+                "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
+                "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
+                "security_highlight": _csrf_highlight_message(),
+                "framework": "fastapi",
+                "framework_name": "FastAPI (Async)",
+                "framework_type": style,
+                "form_html": form_html,
+                "errors": {"form": csrf_error},
+            },
+            status_code=403,
+        )
+
     full_referer_path = get_referer_path(request)
 
-    from examples.nested_forms_example import ComprehensiveTabbedForm
-    from examples.shared_models import handle_form_submission as examples_handle_form_submission
+    from .nested_forms_models import ComprehensiveTabbedForm
 
-    result = examples_handle_form_submission(ComprehensiveTabbedForm, form_dict)
+    result = handle_form_submission(ComprehensiveTabbedForm, form_dict)
 
     if result.get("success"):
+        request.session.pop(ORGANIZATION_CSRF_SESSION_KEY, None)
         return templates.TemplateResponse(
             request,
             "success.html",
@@ -1539,12 +2103,22 @@ async def organization_post(
             },
         )
 
+    csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
+
+    try:
+        parsed_form_data = parse_nested_form_data(form_dict)
+    except Exception:
+        parsed_form_data = form_dict
+
     form_html = await render_form_html_async(
         ComprehensiveTabbedForm,
         framework=style,
-        form_data=form_dict,
+        form_data=parsed_form_data,
         errors=result.get("errors") or {},
         submit_url=f"/organization?style={style}",
+        csrf_mode="required-provider",
+        csrf_token_provider=csrf_token,
+        csrf_field_name="csrf_token",
         debug=debug,
         show_timing=show_timing,
         enable_logging=False,
@@ -1556,7 +2130,8 @@ async def organization_post(
         {
             "request": request,
             "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
-            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings",
+            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
+            "security_highlight": _csrf_highlight_message(),
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -1572,7 +2147,7 @@ async def organization_shared_get(
     style: str = "bootstrap",
     data: str | None = None,
     demo: bool = True,
-    debug: bool = True,
+    debug: bool = False,
     show_timing: bool = True,
 ):
     """Organization-only demo using reusable shared models from the examples."""
@@ -1581,13 +2156,13 @@ async def organization_shared_get(
     if prefill is not None:
         form_data = prefill
     elif demo:
-        from examples.shared_models import create_sample_nested_data
+        from .models import create_sample_nested_data
 
         form_data = create_sample_nested_data()
     else:
         form_data = {}
 
-    from examples.shared_models import CompanyOrganizationForm
+    from .models import CompanyOrganizationForm
 
     form_html = await render_form_html_async(
         CompanyOrganizationForm,
@@ -1605,7 +2180,7 @@ async def organization_shared_get(
         {
             "request": request,
             "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in shared_models.py.",
+            "description": "Reusable organization-only example powered by models in models.py.",
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -1626,10 +2201,9 @@ async def organization_shared_post(
     form_dict = dict(form_data)
     full_referer_path = get_referer_path(request)
 
-    from examples.shared_models import CompanyOrganizationForm
-    from examples.shared_models import handle_form_submission as examples_handle_form_submission
+    from .models import CompanyOrganizationForm
 
-    result = examples_handle_form_submission(CompanyOrganizationForm, form_dict)
+    result = handle_form_submission(CompanyOrganizationForm, form_dict)
 
     if result.get("success"):
         return templates.TemplateResponse(
@@ -1663,7 +2237,7 @@ async def organization_shared_post(
         {
             "request": request,
             "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in shared_models.py.",
+            "description": "Reusable organization-only example powered by models in models.py.",
             "framework": "fastapi",
             "framework_name": "FastAPI (Async)",
             "framework_type": style,
@@ -1924,7 +2498,7 @@ async def health_check():
 # =========================================================================
 
 
-@app.get("/api/analytics/summary", tags=["Analytics"])
+@app.get("/api/analytics/summary", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_summary(request: Request, days: int = 1, top_n: int = 10):
     _require_dashboard_auth(request)
     summary = get_summary(days=days, top_n=top_n)
@@ -1939,32 +2513,100 @@ async def api_analytics_summary(request: Request, days: int = 1, top_n: int = 10
     }
 
 
-@app.get("/api/analytics/requests", tags=["Analytics"])
+@app.get("/api/analytics/requests", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_requests(request: Request, limit: int = 200):
     _require_dashboard_auth(request)
     return {"requests": get_recent_requests(limit=min(max(limit, 1), 1000))}
 
 
-@app.get("/api/analytics/errors", tags=["Analytics"])
+@app.get("/api/analytics/errors", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_errors(request: Request, limit: int = 200):
     _require_dashboard_auth(request)
     return {"errors": get_recent_errors(limit=min(max(limit, 1), 1000))}
 
 
-@app.post("/api/analytics/purge", tags=["Analytics"])
+@app.get("/api/analytics/ip-geo", tags=["Analytics"], include_in_schema=False)
+async def api_analytics_ip_geo(request: Request):
+    _require_dashboard_auth(request)
+    return {"ip_geo": get_ip_geo_queue_status()}
+
+
+@app.post("/api/analytics/purge", tags=["Analytics"], include_in_schema=False)
 async def api_analytics_purge(request: Request):
     _require_dashboard_auth(request)
     purge_all()
     return {"status": "ok"}
 
 
-@app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"])
+@app.get("/central", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
+async def central_dashboard(request: Request):
+    # Same token-to-cookie flow as /dashboard.
+    required = _dashboard_token_required()
+    presented = _token_from_request(request)
+    if presented:
+        if presented != required:
+            raise HTTPException(status_code=401, detail="Dashboard token required")
+
+        params = dict(request.query_params)
+        params.pop("token", None)
+        query = "&".join(f"{k}={v}" for k, v in params.items() if v is not None and v != "")
+        url = "/central" + (f"?{query}" if query else "")
+
+        resp = RedirectResponse(url=url, status_code=303)
+        _maybe_set_dashboard_cookie_from_token(request, resp)
+        return resp
+
+    _require_dashboard_auth(request)
+
+    ip_geo = get_ip_geo_queue_status()
+    token_required = True
+    ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
+
+    def _env(name: str, default: str) -> str:
+        val = os.environ.get(name)
+        if val is None:
+            return default
+        return val
+
+    def _env_int(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name) or default)
+        except Exception:
+            return default
+
+    health = {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "version": pydantic_schemaforms.__version__,
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "central_dashboard.html",
+        {
+            "request": request,
+            "app_name": app.title,
+            "app_version": app.version,
+            "health": health,
+            "ip_geo": ip_geo,
+            "ip_geo_enabled": _env("IP_GEO_ENABLED", "0"),
+            "ip_geo_worker_enabled": _env("IP_GEO_WORKER_ENABLED", "0"),
+            "ip_geo_rate_limit_per_min": _env_int("IP_GEO_RATE_LIMIT_PER_MIN", 40),
+            "ip_geo_cache_ttl_days": _env_int("IP_GEO_CACHE_TTL_DAYS", 180),
+            "analytics_db_path": get_db_path(),
+            "token_required": token_required,
+            "ttl_min": ttl_min,
+        },
+    )
+
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
 async def dashboard(request: Request, days: int = 1, limit: int = 50):
     # If a valid token is presented, set/refresh a 30-min cookie and redirect
     # to a clean URL (so the token doesn't stay in the address bar).
     required = _dashboard_token_required()
     presented = _token_from_request(request)
-    if required and presented:
+    if presented:
         if presented != required:
             raise HTTPException(status_code=401, detail="Dashboard token required")
 
@@ -1981,9 +2623,38 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
 
     summary = get_summary(days=days, top_n=10)
     recent = get_recent_requests(limit=min(max(limit, 1), 500))
-    recent_errors = get_recent_errors(limit=50)
 
-    token_required = _dashboard_token_required() is not None
+    # Build per-row UUID lookups so HTMX details fetches don't expose raw IP query params.
+    for row in recent:
+        try:
+            payload = {
+                "ts": row.get("ts"),
+                "request_id": row.get("request_id"),
+                "path": row.get("path"),
+                "method": row.get("method"),
+                "status_code": row.get("status_code"),
+                "client_ip": row.get("client_ip"),
+                "location": row.get("location"),
+                "country": row.get("country"),
+                "country_code": row.get("country_code"),
+                "region": row.get("region"),
+                "city": row.get("city"),
+                "latitude": row.get("latitude"),
+                "longitude": row.get("longitude"),
+                "ip_geo_provider": row.get("ip_geo_provider"),
+                "ip_geo_fetched_at": row.get("ip_geo_fetched_at"),
+                "ip_geo_expires_at": row.get("ip_geo_expires_at"),
+                "ip_geo_raw_json": row.get("ip_geo_raw_json"),
+                "ip_geo_tooltip": row.get("ip_geo_tooltip"),
+            }
+            row["ip_lookup_id"] = _dashboard_ip_modal_store(request, payload)
+        except Exception:
+            row["ip_lookup_id"] = None
+
+    recent_errors = get_recent_errors(limit=50)
+    ip_geo = get_ip_geo_queue_status()
+
+    token_required = True
     ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
 
     return templates.TemplateResponse(
@@ -1994,13 +2665,37 @@ async def dashboard(request: Request, days: int = 1, limit: int = 50):
             "summary": summary,
             "recent": recent,
             "recent_errors": recent_errors,
+            "ip_geo": ip_geo,
             "token_required": token_required,
             "ttl_min": ttl_min,
         },
     )
 
 
-@app.get("/dashboard/logout", tags=["Analytics"])
+@app.get(
+    "/dashboard/ip-modal/{lookup_id}",
+    response_class=HTMLResponse,
+    tags=["Analytics"],
+    include_in_schema=False,
+)
+async def dashboard_ip_modal(request: Request, lookup_id: str):
+    _require_dashboard_auth(request)
+
+    payload = _dashboard_ip_modal_lookup(request, lookup_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="IP detail lookup not found")
+
+    return templates.TemplateResponse(
+        request,
+        "ip_modal.html",
+        {
+            "request": request,
+            "row": payload,
+        },
+    )
+
+
+@app.get("/dashboard/logout", tags=["Analytics"], include_in_schema=False)
 async def dashboard_logout(request: Request):
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie(key=_dashboard_cookie_name(), path="/")

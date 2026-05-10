@@ -1,7 +1,9 @@
 # Consolidation Summary
 
 ## Overview
-All endpoints and models from the `examples/` directory have been successfully consolidated into the main FastAPI application in `src/`.
+All endpoints and models originally sourced from the `examples/` directory have been consolidated into the main FastAPI application in `src/`.
+
+The repository no longer contains an `examples/` demo directory; compatibility for legacy `examples.shared_models` imports is provided in-memory by the FastAPI app startup code.
 
 ## Files Updated
 
