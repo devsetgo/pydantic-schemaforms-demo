@@ -46,33 +46,17 @@
         font-size: 0.75rem;
         font-weight: 600;
     }
-    .csrf-protected-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        margin-left: 0.5rem;
-        padding: 0.2rem 0.55rem;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        background: #e8f8ee;
-        color: #146c43;
-        border: 1px solid #b7ebc6;
-        vertical-align: middle;
-    }
-    .hero-security-legend {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        margin-top: 0.8rem;
-        padding: 0.4rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.82rem;
+    .live-validation-badge {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        background: linear-gradient(45deg, #6610f2, #6f42c1);
+        color: white;
+        padding: 3px 9px;
+        border-radius: 15px;
+        font-size: 0.7rem;
         font-weight: 600;
-        color: #d1fae5;
-        border: 1px solid rgba(16, 185, 129, 0.45);
-        background: rgba(16, 185, 129, 0.16);
+        letter-spacing: 0.02em;
     }
     @media (max-width: 991px) {
         body .hero-section {
@@ -104,10 +88,6 @@
                 Built with modern web frameworks and beautiful UI components<br>
                 <small>Plain HTML mode is available on all examples with <code>?style=none</code> (e.g. <a class="text-white" href="/login?style=none&demo=true&debug=true">/login?style=none</a>)</small>
             </p>
-            <div class="hero-security-legend">
-                <i class="bi bi-shield-lock-fill"></i>
-                Shield badge marks forms with CSRF protection enabled
-            </div>
         </div>
         <div>
             <img class="hero-logo" src="{{ url_for('static', path='pydantic-schemaform-logo.png') }}" alt="Pydantic Schemaform logo">
@@ -126,12 +106,6 @@
                     <i class="bi bi-person-plus-fill"></i>
                 </div>
                 <h5 class="card-title">User Registration</h5>
-                <div>
-                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
-                        <i class="bi bi-shield-lock-fill"></i>
-                        CSRF
-                    </span>
-                </div>
                 <p class="card-text flex-grow-1">
                     Simple user registration form with validation,
                     role selection, and responsive design.
@@ -293,12 +267,6 @@
                     <i class="bi bi-box-arrow-in-right"></i>
                 </div>
                 <h5 class="card-title">Login Form</h5>
-                <div>
-                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
-                        <i class="bi bi-shield-lock-fill"></i>
-                        CSRF
-                    </span>
-                </div>
                 <p class="card-text flex-grow-1">
                     Minimal login form demonstrating basic
                     authentication with form validation.
@@ -384,12 +352,6 @@
                     <i class="bi bi-diagram-3-fill"></i>
                 </div>
                 <h5 class="card-title">Comprehensive Tabs</h5>
-                <div>
-                    <span class="csrf-protected-badge" title="CSRF protection enabled for this form">
-                        <i class="bi bi-shield-lock-fill"></i>
-                        CSRF
-                    </span>
-                </div>
                 <p class="card-text flex-grow-1">
                     <strong>6 Tabs!</strong> Organization (5 levels) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings
                 </p>
@@ -464,6 +426,100 @@
         </div>
     </div>
 
+    <!-- Dual-Use: Contact Form -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 demo-card position-relative">
+            <div class="framework-badge">as_api_model()</div>
+            <div class="card-body d-flex flex-column text-center p-4">
+                <div class="feature-icon">
+                    <i class="bi bi-envelope-fill"></i>
+                </div>
+                <h5 class="card-title">Contact Form</h5>
+                <p class="card-text flex-grow-1">
+                    One <code>FormModel</code> drives both an HTML form and a typed
+                    JSON endpoint. <code>as_api_model()</code> strips <code>ui_*</code>
+                    keys — string fields with length and format constraints.
+                </p>
+                <div class="mt-auto">
+                    <div class="d-grid gap-2">
+                        <a href="/contact?style=bootstrap&demo=true&debug=true&show_timing=true" class="btn btn-demo btn-sm">
+                            <i class="bi bi-arrow-right me-2"></i>
+                            Open Form
+                        </a>
+                        <div class="btn-group" role="group">
+                            <a href="/contact?style=bootstrap&demo=true&debug=true&show_timing=true" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-bootstrap me-1"></i>
+                                Bootstrap
+                            </a>
+                            <a href="/contact?style=material&demo=true&debug=true&show_timing=true" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-palette me-1"></i>
+                                Material
+                            </a>
+                            <a href="/contact?style=none&demo=true&debug=true&show_timing=true" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-code-square me-1"></i>
+                                Plain HTML
+                            </a>
+                        </div>
+                        {% if framework == "fastapi" %}
+                        <a href="/docs#/Dual-Use%3A%20Form%20%2B%20JSON%20API/api_contact_api_contact_post" target="_blank" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-braces me-1"></i>
+                            POST /api/contact in OpenAPI
+                        </a>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted mt-2">str fields · <a href="/api/contact/schema" target="_blank" class="text-decoration-none">schema</a></small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dual-Use: Feedback Form -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 demo-card position-relative">
+            <div class="framework-badge">as_api_model()</div>
+            <div class="card-body d-flex flex-column text-center p-4">
+                <div class="feature-icon">
+                    <i class="bi bi-star-fill"></i>
+                </div>
+                <h5 class="card-title">Feedback Form</h5>
+                <p class="card-text flex-grow-1">
+                    Same dual-use pattern with an <code>int</code> rating field
+                    constrained by <code>ge=1</code> / <code>le=5</code> — shows
+                    numeric constraints surviving <code>as_api_model()</code>.
+                </p>
+                <div class="mt-auto">
+                    <div class="d-grid gap-2">
+                        <a href="/feedback?style=bootstrap&demo=true&debug=true&show_timing=true" class="btn btn-demo btn-sm">
+                            <i class="bi bi-arrow-right me-2"></i>
+                            Open Form
+                        </a>
+                        <div class="btn-group" role="group">
+                            <a href="/feedback?style=bootstrap&demo=true&debug=true&show_timing=true" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-bootstrap me-1"></i>
+                                Bootstrap
+                            </a>
+                            <a href="/feedback?style=material&demo=true&debug=true&show_timing=true" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-palette me-1"></i>
+                                Material
+                            </a>
+                            <a href="/feedback?style=none&demo=true&debug=true&show_timing=true" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-code-square me-1"></i>
+                                Plain HTML
+                            </a>
+                        </div>
+                        {% if framework == "fastapi" %}
+                        <a href="/docs#/Dual-Use%3A%20Form%20%2B%20JSON%20API/api_feedback_api_feedback_post" target="_blank" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-braces me-1"></i>
+                            POST /api/feedback in OpenAPI
+                        </a>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted mt-2">int + ge/le · <a href="/api/feedback/schema" target="_blank" class="text-decoration-none">schema</a></small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- API Documentation -->
     <div class="col-md-6 col-lg-4">
         <div class="card h-100 demo-card position-relative">
@@ -502,6 +558,33 @@
                     </span>
                     {% endif %}
                     <small class="text-muted mt-2">Interactive docs</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live HTMX Validation -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 demo-card position-relative">
+            <div class="framework-badge">Live Validation</div>
+            <div class="live-validation-badge"><i class="bi bi-lightning-charge-fill me-1"></i>HTMX</div>
+            <div class="card-body d-flex flex-column text-center p-4">
+                <div class="feature-icon">
+                    <i class="bi bi-lightning-charge-fill"></i>
+                </div>
+                <h5 class="card-title">Live HTMX Validation</h5>
+                <p class="card-text flex-grow-1">
+                    Real-time field validation on blur via HTMX — each field
+                    checked server-side without a full page reload.
+                </p>
+                <div class="mt-auto">
+                    <div class="d-grid gap-2">
+                        <a href="/live-validation" class="btn btn-demo btn-sm">
+                            <i class="bi bi-arrow-right me-2"></i>
+                            Try Live Validation
+                        </a>
+                    </div>
+                    <small class="text-muted mt-2">LiveValidator · HTMX on blur</small>
                 </div>
             </div>
         </div>

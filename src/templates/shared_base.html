@@ -69,6 +69,41 @@
             margin-bottom: 1.5rem;
         }
 
+        .resource-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .resource-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border: 1px solid #dbe3ef;
+            border-radius: 999px;
+            padding: 0.35rem 0.75rem;
+            background: #fff;
+            color: #1f2937;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .resource-link:hover {
+            border-color: #c7d2fe;
+            color: #312e81;
+            background: #eef2ff;
+        }
+
+        .resource-link-static,
+        .resource-link-static:hover {
+            border-color: #dbe3ef;
+            color: #1f2937;
+            background: #fff;
+            cursor: default;
+        }
+
         @media (max-width: 576px) {
             .site-brand-logo {
                 display: none;
@@ -144,6 +179,29 @@
 </head>
 <body>
     <div class="{% if request and 'organization' in request.path %}container-fluid{% else %}container{% endif %} py-4">
+        {% if request and request.url.path == '/' %}
+        <div class="resource-links" aria-label="External resources">
+            <a class="resource-link" href="https://pypi.org/project/pydantic-schemaforms/" target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-box-seam"></i>
+                PyPI
+            </a>
+            <a class="resource-link" href="https://github.com/devsetgo/pydantic-schemaforms" target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-github"></i>
+                GitHub
+            </a>
+            <a class="resource-link" href="https://devsetgo.github.io/pydantic-schemaforms/" target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-book"></i>
+                Documentation
+            </a>
+            {% if lib_version %}
+            <span class="resource-link resource-link-static" aria-label="Pydantic SchemaForms version">
+                <i class="bi bi-tag"></i>
+                pydantic-schemaforms v{{ lib_version }}
+            </span>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% if not request or request.url.path != '/' %}
         <div class="site-brand-shell">
             <a class="site-brand" href="/" aria-label="Pydantic Schemaform home">

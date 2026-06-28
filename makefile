@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.4.26.1
+APP_VERSION = 26.6.28.1
 PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
@@ -104,13 +104,44 @@ isort: ## Sort imports in Python code
 test: ## Run the project's tests (linting + pytest + coverage badges)
 	@start=$$(date +%s); \
 	echo "🔍 Running pre-commit (ruff, formatting, yaml/toml checks)..."; \
-	$(PYTHON) -m pre_commit run -a; \
-	echo "✅ Pre-commit passed. Running pytest..."; \
-	$(PYTHON) -m pytest -n 2; \
+	if [ -f .pre-commit-config.yaml ]; then \
+		$(PYTHON) -m pre_commit run -a; \
+		PRE_COMMIT_STATUS="passed"; \
+	else \
+		echo "(skipped) .pre-commit-config.yaml not found"; \
+		PRE_COMMIT_STATUS="skipped"; \
+	fi; \
+	echo "✅ Pre-commit $$PRE_COMMIT_STATUS. Running pytest..."; \
+	PYTEST_XDIST_ARGS=""; \
+	if $(PYTHON) -c "import xdist" >/dev/null 2>&1; then \
+		PYTEST_XDIST_ARGS="-n 2"; \
+	else \
+		echo "(info) pytest-xdist not installed; running without -n"; \
+	fi; \
+	PYTEST_COV_ARGS=""; \
+	if $(PYTHON) -c "import pytest_cov" >/dev/null 2>&1; then \
+		PYTEST_COV_ARGS="--cov=src --cov-report=xml"; \
+	else \
+		echo "(info) pytest-cov not installed; running without coverage XML"; \
+	fi; \
+	$(PYTHON) -m pytest $$PYTEST_XDIST_ARGS --junitxml=report.xml $$PYTEST_COV_ARGS; \
+	TEST_STATUS=$$?; \
+	if [ $$TEST_STATUS -ne 0 ]; then \
+		echo "❌ Pytest failed (exit $$TEST_STATUS)."; \
+		exit $$TEST_STATUS; \
+	fi; \
 	echo "📊 Generating coverage and test badges..."; \
-	genbadge coverage -i /workspaces/$(REPONAME)/coverage.xml 2>/dev/null || true; \
-	genbadge tests -i /workspaces/$(REPONAME)/report.xml 2>/dev/null || true; \
-	sed -i "s|<source>/workspaces/$(REPONAME)</source>|<source>$$(pwd)</source>|" coverage.xml; \
+	if [ -f coverage.xml ]; then \
+		genbadge coverage -i coverage.xml 2>/dev/null || true; \
+		sed -i "s|<source>/workspaces/$(REPONAME)</source>|<source>$$(pwd)</source>|" coverage.xml; \
+	else \
+		echo "(skipped) coverage.xml not found"; \
+	fi; \
+	if [ -f report.xml ]; then \
+		genbadge tests -i report.xml 2>/dev/null || true; \
+	else \
+		echo "(skipped) report.xml not found"; \
+	fi; \
 	end=$$(date +%s); \
 	$(PYTHON) -c "print(f'✨ Tests complete. Badges updated. Total time: {$$end - $$start:.2f} seconds')"
 

@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import _form_mapping, app
+from src.main import FORM_REGISTRY, app
 
 client = TestClient(app)
 
@@ -238,7 +238,7 @@ def make_invalid_payload(root_schema: dict[str, Any]) -> dict[str, Any] | None:
     return {field_name: None}
 
 
-FORM_TYPES = sorted(_form_mapping().keys())
+FORM_TYPES = sorted(FORM_REGISTRY.keys())
 
 
 @pytest.mark.parametrize("form_type", FORM_TYPES)
@@ -259,8 +259,7 @@ def test_forms_schema_render_and_validation_smoke(form_type: str):
         params={
             "style": "bootstrap",
             "debug": "false",
-            "include_assets": "false",
-            "asset_mode": "vendored",
+            "show_timing": "false",
         },
     )
     assert render_resp.status_code == 200
@@ -286,9 +285,70 @@ def test_forms_schema_render_and_validation_smoke(form_type: str):
     if "password" in valid_payload and "confirm_password" in valid_payload:
         valid_payload["confirm_password"] = valid_payload["password"]
 
+    # Some forms enforce semantic consent rules in validators.
+    if "terms_accepted" in valid_payload:
+        valid_payload["terms_accepted"] = True
+
+    # Showcase model includes a custom mixed-case password validator.
+    if "password_field" in valid_payload:
+        valid_payload["password_field"] = "ValidPass"
+
     valid_resp = client.post(f"/api/forms/{form_type}/submit", json=valid_payload)
     assert valid_resp.status_code == 200
     valid_body = valid_resp.json()
     assert valid_body["framework"] == "fastapi"
     assert valid_body["success"] is True
     assert valid_body["data"] is not None
+
+
+def test_dual_use_contact_api_smoke():
+    schema_resp = client.get("/api/contact/schema")
+    assert schema_resp.status_code == 200
+    schema = schema_resp.json()
+    assert isinstance(schema, dict)
+    assert isinstance(schema.get("properties"), dict)
+
+    for field_schema in schema["properties"].values():
+        if isinstance(field_schema, dict):
+            assert not any(str(k).startswith("ui_") for k in field_schema.keys())
+
+    invalid_resp = client.post(
+        "/api/contact",
+        json={"name": "A", "email": "not-an-email", "message": "short"},
+    )
+    assert invalid_resp.status_code == 422
+
+    valid_payload = {
+        "name": "Alice Example",
+        "email": "alice@example.com",
+        "message": "Hello there, this is a valid contact message.",
+    }
+    valid_resp = client.post("/api/contact", json=valid_payload)
+    assert valid_resp.status_code == 200
+    assert valid_resp.json() == valid_payload
+
+
+def test_dual_use_feedback_api_smoke():
+    schema_resp = client.get("/api/feedback/schema")
+    assert schema_resp.status_code == 200
+    schema = schema_resp.json()
+    assert isinstance(schema, dict)
+    assert isinstance(schema.get("properties"), dict)
+    rating_schema = schema["properties"].get("rating", {})
+    assert rating_schema.get("minimum") == 1
+    assert rating_schema.get("maximum") == 5
+
+    invalid_resp = client.post(
+        "/api/feedback",
+        json={"subject": "Docs", "rating": 0, "comment": "Too low"},
+    )
+    assert invalid_resp.status_code == 422
+
+    valid_payload = {
+        "subject": "Documentation",
+        "rating": 5,
+        "comment": "Very clear and helpful examples.",
+    }
+    valid_resp = client.post("/api/feedback", json=valid_payload)
+    assert valid_resp.status_code == 200
+    assert valid_resp.json() == valid_payload
