@@ -1,2357 +1,325 @@
+#!/usr/bin/env python3
 """
-Pydantic SchemaForms Demo - FastAPI Application
+FastAPI Example - Async Implementation
+=====================================
 
-A comprehensive demonstration of pydantic-schemaforms capabilities
-with all endpoints and models from the examples consolidated.
+This example demonstrates ALL Pydantic SchemaForms capabilities in an asynchronous FastAPI application.
+It showcases simple, medium, and complex forms with various layouts.
+
+Forms demonstrated:
+- Simple: MinimalLoginForm (basic fields, validation)
+- Medium: UserRegistrationForm (multiple field types, icons, validation)
+- Complex: CompleteShowcaseForm (model lists, dynamic fields, sections, all input types)
+
+Layouts demonstrated:
+- Bootstrap styling with external icons
+- Material Design 3 styling with external icons
+- Self-contained forms (zero dependencies)
+- Dynamic list layouts with add/remove functionality
+- Sectioned forms with collapsible sections
+- All input types (text, email, password, select, number, date, color, range, etc.)
+- API-first design with JSON schemas and OpenAPI documentation
 """
 
-import json
-import logging
 import os
-import re
-import asyncio
 import hmac
 import secrets
-import time
-import traceback
-from logging.handlers import RotatingFileHandler
-from uuid import UUID, uuid4
-from datetime import datetime
+import sys
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
-from collections import defaultdict
-from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-import pydantic_schemaforms
-from pydantic_schemaforms import render_form_html_async
-from pydantic_schemaforms.enhanced_renderer import render_form_html, EnhancedFormRenderer
-from pydantic_schemaforms.form_data import parse_nested_form_data
-from pydantic_schemaforms.simple_material_renderer import SimpleMaterialRenderer
-from pydantic_schemaforms.validation import validate_form_data
+# Add the parent directory to the path to import our library
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .models import (
+from .models import (  # Simple Form; Medium Form; Complex Form; Pet Forms; Layout Demonstration; Utility functions
+    CompanyOrganizationForm,
     CompleteShowcaseForm,
-    ContactInfoForm,
-    Country,
-    EmergencyContactModel,
     LayoutDemonstrationForm,
-    MediumContactForm as ContactForm,
     MinimalLoginForm,
-    PersonalInfoForm,
-    PetModel,
     PetRegistrationForm,
-    PreferencesForm,
-    Priority,
-    TaskItem,
-    TaskListForm,
     UserRegistrationForm,
+    create_sample_nested_data,
 )
+from .nested_forms_models import create_comprehensive_sample_data
 
-
-def _install_examples_shared_models_alias() -> None:
-    """Provide an in-memory alias for `examples.shared_models`.
-
-    The upstream `pydantic_schemaforms` layout engine contains a fallback import
-    of `examples.shared_models` for its built-in layout demo fields.
-
-    This demo keeps canonical models in `src/models.py` and intentionally does
-    not ship an `examples/` directory.
-    """
-
-    import sys
-    import types
-
-    if "examples.shared_models" in sys.modules:
-        return
-
-    examples_pkg = sys.modules.get("examples")
-    if examples_pkg is None:
-        examples_pkg = types.ModuleType("examples")
-        # Mark as package-like so imports behave consistently.
-        examples_pkg.__path__ = []  # type: ignore[attr-defined]
-        sys.modules["examples"] = examples_pkg
-
-    shared_models_mod = types.ModuleType("examples.shared_models")
-    shared_models_mod.PersonalInfoForm = PersonalInfoForm
-    shared_models_mod.ContactInfoForm = ContactInfoForm
-    shared_models_mod.PreferencesForm = PreferencesForm
-    shared_models_mod.TaskListForm = TaskListForm
-
-    sys.modules["examples.shared_models"] = shared_models_mod
-    setattr(examples_pkg, "shared_models", shared_models_mod)
-
-
-_install_examples_shared_models_alias()
-
-
-def handle_form_submission(
-    form_model_class: type,
-    form_data: dict[str, Any],
-    success_message: str | None = None,
-) -> dict[str, Any]:
-    """Validate incoming form data against a form model and normalize response."""
-    parsed_form_data = parse_nested_form_data(form_data)
-    result = validate_form_data(form_model_class, parsed_form_data)
-    return {
-        "success": bool(result.is_valid),
-        "data": result.data,
-        "errors": result.errors,
-        "message": success_message if result.is_valid else None,
-    }
-
-
-from .analytics import (
-    extract_client_ip,
-    extract_country,
-    get_db_path,
-    get_ip_geo_queue_status,
-    get_recent_errors,
-    get_recent_requests,
-    get_summary,
-    init_db,
-    purge_all,
-    record_error,
-    record_request,
-    seed_local_ip_examples,
+from pydantic_schemaforms import (
+    __version__ as _psf_version,
+    EnhancedFormRenderer,
+    Field,
+    FormLayoutBase,
+    FormModel,
+    parse_nested_form_data,
+    render_form_html_async,
 )
+from pydantic_schemaforms.assets.runtime import bootstrap_icons_css_content
 
-from .ip_geo_worker import ip_geo_enabled, ip_geo_worker_enabled, run_ip_geo_worker
 
-# ============================================================================
-# APP SETUP
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Dual-use demo: one FormModel, two endpoints (HTML form + JSON API)
+# ---------------------------------------------------------------------------
+
+
+class ContactForm(FormModel):
+    """Simple contact form that also serves as a typed JSON API body."""
+
+    name: str = Field(
+        ...,
+        min_length=2,
+        title='Full Name',
+        description='Your full name',
+        examples=['Alice Smith'],
+        ui_element='text',
+        ui_placeholder='Enter your full name',
+    )
+    email: str = Field(
+        ...,
+        title='Email Address',
+        description='We will never share your email',
+        examples=['alice@example.com'],
+        ui_element='email',
+    )
+    message: str = Field(
+        ...,
+        min_length=10,
+        title='Message',
+        description='What would you like to say?',
+        examples=['Hello, I would like to ask about...'],
+        ui_element='textarea',
+    )
+
+
+# Derive the API model once at module level.
+# Same fields and validation rules; ui_* keys stripped so OpenAPI docs are clean.
+ContactSchema = ContactForm.as_api_model()
+
+
+# ---------------------------------------------------------------------------
+# Second dual-use demo: integer + select fields via as_api_model()
+# ---------------------------------------------------------------------------
+
+
+class FeedbackForm(FormModel):
+    """Product feedback form that also serves as a typed JSON API body."""
+
+    subject: str = Field(
+        ...,
+        title='Subject',
+        description='What are you giving feedback on?',
+        examples=['Documentation', 'Performance', 'New feature request'],
+        ui_element='text',
+        ui_placeholder='e.g. Documentation clarity',
+    )
+    rating: int = Field(
+        ...,
+        ge=1,
+        le=5,
+        title='Rating (1–5)',
+        description='1 = poor, 5 = excellent',
+        examples=[4],
+        ui_element='number',
+    )
+    comment: str = Field(
+        '',
+        title='Comment',
+        description='Any additional details (optional)',
+        examples=['Great library, very easy to integrate!'],
+        ui_element='textarea',
+    )
+
+
+# ge/le constraints (minimum/maximum) are preserved in the API schema.
+FeedbackSchema = FeedbackForm.as_api_model()
+
+_openapi_tags = [
+    {
+        'name': 'Simple Forms',
+        'description': 'Minimal login form — basic fields, CSRF protection, and two CSS frameworks.',
+    },
+    {
+        'name': 'Registration',
+        'description': 'Medium-complexity registration form with role selection and responsive design.',
+    },
+    {
+        'name': 'Dynamic Lists',
+        'description': 'Pet registration — repeating sub-forms (model-list fields) with add/remove controls.',
+    },
+    {
+        'name': 'Showcase',
+        'description': 'Complete field showcase and complex layout compositions (tabs, accordions, grids).',
+    },
+    {
+        'name': 'Advanced Nested',
+        'description': 'Five-level nested organization hierarchy — the stress test for the rendering engine.',
+    },
+    {
+        'name': 'Self-Contained',
+        'description': 'Forms rendered with inline Bootstrap assets — no CDN required.',
+    },
+    {
+        'name': 'Dual-Use: Form + JSON API',
+        'description': (
+            'One `FormModel` serves both an HTML browser form and a typed JSON endpoint. '
+            '`as_api_model()` strips `ui_*` keys so the schema here looks hand-written, '
+            'with all validation constraints intact.'
+        ),
+    },
+    {
+        'name': 'Generic Form API',
+        'description': 'JSON endpoints for schema introspection, server-side rendering, and headless submission.',
+    },
+    {
+        'name': 'System',
+        'description': 'Health check and static asset endpoints.',
+    },
+]
 
 app = FastAPI(
-    title="Pydantic SchemaForms Demo",
-    description="Comprehensive showcase of pydantic-schemaforms capabilities in FastAPI",
-    version="26.1.1b0",
-    docs_url="/docs",
-    openapi_url="/openapi.json",
-    openapi_tags=[
-        {
-            "name": "Examples",
-            "description": "Form demo pages and form-related API endpoints.",
-        },
-        {
-            "name": "Analytics",
-            "description": "Self-hosted analytics APIs and dashboard.",
-        },
-        {
-            "name": "Health",
-            "description": "Health check endpoints.",
-        },
-    ],
+    title='Pydantic SchemaForms - FastAPI Example',
+    description='Comprehensive showcase of pydantic-schemaforms capabilities in async FastAPI',
+    version=_psf_version,
+    openapi_tags=_openapi_tags,
 )
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=(os.getenv("SCHEMAFORMS_SESSION_SECRET") or "dev-only-change-me"),
-    same_site="lax",
+    secret_key=os.getenv('SCHEMAFORMS_EXAMPLE_SESSION_SECRET', 'dev-only-change-me'),
+    same_site='lax',
     https_only=False,
 )
 
-LOGIN_CSRF_SESSION_KEY = "login_csrf_token"
-REGISTER_CSRF_SESSION_KEY = "register_csrf_token"
-ORGANIZATION_CSRF_SESSION_KEY = "organization_csrf_token"
+LOGIN_CSRF_SESSION_KEY = 'login_csrf_token'
+REGISTER_CSRF_SESSION_KEY = 'register_csrf_token'
 
 
-def _csrf_highlight_message() -> str:
-    return "CSRF protection active: token issued on GET and verified before form validation on POST."
-
-
-def _issue_csrf_token(request: Request, session_key: str) -> str:
+def issue_login_csrf_token(request: Request) -> str:
+    """Issue and persist a CSRF token for the login demo flow."""
     token = secrets.token_urlsafe(32)
-    request.session[session_key] = token
+    request.session[LOGIN_CSRF_SESSION_KEY] = token
     return token
 
 
-def _verify_csrf_token(request: Request, session_key: str, submitted_token: Any) -> bool:
-    expected_token = request.session.get(session_key)
+def verify_login_csrf_token(request: Request, submitted_token) -> bool:
+    """Verify a submitted token against the session token using constant-time compare."""
+    expected_token = request.session.get(LOGIN_CSRF_SESSION_KEY)
     if not expected_token or not submitted_token:
         return False
     return hmac.compare_digest(str(expected_token), str(submitted_token))
 
 
-@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
-async def robots_txt(request: Request) -> PlainTextResponse:
-    base = str(request.base_url).rstrip("/")
-    body = "\n".join(
-        [
-            "User-agent: *",
-            "Disallow: /api/",
-            "Disallow: /docs",
-            "Disallow: /openapi.json",
-            "Disallow: /dashboard",
-            "Disallow: /static/",
-            "Allow: /",
-            "",
-            f"# Host: {base}",
-        ]
-    )
-    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
-
-
-@app.get("/security", response_class=PlainTextResponse, include_in_schema=False)
-async def security_notice() -> PlainTextResponse:
-    body = "\n".join(
-        [
-            "Nothing to see here.",
-            "",
-            "If you are scanning for exposed logs/.env/credentials: this demo app does not store them under the web root.",
-            "Please stop probing random paths.",
-            "",
-            "(Legit issue? Contact the site owner.)",
-        ]
-    )
-    return PlainTextResponse(content=body, media_type="text/plain; charset=utf-8")
-
-
-def _load_dotenv_if_present() -> None:
-    """Load a local .env file if present.
-
-    This demo intentionally avoids adding dependencies. We only set env vars that
-    are not already set in the process environment.
-    """
-
-    # Repo root is one level above the `src/` package.
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
-
-    try:
-        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
-    except Exception:
-        # Never fail app startup for a bad .env.
-        return
-
-
-_load_dotenv_if_present()
-
-
-def _configure_logging() -> logging.Logger:
-    """Configure app logging (stdout + optional rotating file).
-
-    Uvicorn will configure its own loggers when run via `uvicorn ...`.
-    This config is for running the module directly or in minimal setups.
-    """
-
-    level_name = (os.environ.get("LOG_LEVEL") or "INFO").strip().upper()
-    level = getattr(logging, level_name, logging.INFO)
-
-    logger = logging.getLogger("schemaforms.demo")
-    logger.setLevel(level)
-
-    # Avoid duplicate handlers on reload/import.
-    if logger.handlers:
-        return logger
-
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-
-    sh = logging.StreamHandler()
-    sh.setLevel(level)
-    sh.setFormatter(fmt)
-    logger.addHandler(sh)
-
-    log_path = (os.environ.get("LOG_PATH") or "").strip()
-    if log_path:
-        fh = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=5)
-        fh.setLevel(level)
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-
-    logger.propagate = False
-    return logger
-
-
-logger = _configure_logging()
-
-
-def _antihack_enabled() -> bool:
-    raw = (os.environ.get("ANTISCAN_ENABLED") or "1").strip().lower()
-    return raw not in {"0", "false", "no", "off"}
-
-
-def _antihack_redirect_url() -> str | None:
-    raw = os.environ.get("ANTISCAN_REDIRECT_URL")
-    if raw is None:
-        return None
-    raw = raw.strip()
-    return raw or None
-
-
-def _antihack_tarpit_seconds() -> float | None:
-    raw = os.environ.get("ANTISCAN_TARPIT_SECONDS")
-    if raw is None:
-        return None
-    try:
-        v = float(raw)
-    except Exception:
-        return None
-    if v <= 0:
-        return None
-    # Safety cap: holding connections open for too long can self-DoS.
-    return min(v, 600.0)
-
-
-def _antihack_max_inflight_per_ip() -> int:
-    raw = os.environ.get("ANTISCAN_MAX_INFLIGHT_PER_IP")
-    try:
-        if raw is None:
-            return 1
-        return max(1, int(raw))
-    except Exception:
-        return 1
-
-
-def _looks_like_scan_path(path: str) -> bool:
-    p = (path or "/").strip()
-    if not p.startswith("/"):
-        p = "/" + p
-    p_low = p.lower()
-
-    # Keep false positives low: match known scanner probes.
-    prefixes = (
-        "/.aws/",
-        "/aws/",
-        "/.git",
-        "/.hg",
-        "/.svn",
-        "/.circleci/",
-        "/.travis",
-        "/.bitbucket/",
-        "/.env",
-        "/wp-",
-        "/phpmyadmin",
-        "/_profiler",
-        "/app_dev.php",
-        "/server-status",
-        "/server-info",
-        "/cgi-bin/",
-        "/horizon/",
-        "/storage/logs/",
-        "/vendor/",
-        "/debug",
-        "/manage/env",
-    )
-    if p_low.startswith(prefixes):
-        return True
-
-    # File probes.
-    if p_low in {"/phpinfo", "/phpinfo.php", "/info.php", "/test.php", "/error.log", "/debug.log"}:
-        return True
-
-    # Common sensitive file extensions.
-    if re.search(r"\.(?:php|asp|aspx|jsp|cgi|pl|sh|bak|old|swp)$", p_low):
-        return True
-
-    # Obvious secret/config filenames.
-    if re.search(r"(?:secret|credential|config|settings)\.(?:ya?ml|json|ini|env)$", p_low):
-        return True
-
-    return False
-
-
-# Simple in-memory tarpit/block for scanners.
-# Note: per-process only (fine for a demo; use a reverse proxy/WAF for production).
-_abuse_state: dict[str, dict[str, float]] = {}
-
-
-def _abuse_key(request: Request) -> str:
-    ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
-    ip = (ip or "unknown").strip() or "unknown"
-    return ip
-
-
-def _abuse_gc(now: float) -> None:
-    # Best-effort cleanup: drop entries not seen in ~1h.
-    try:
-        for k in list(_abuse_state.keys()):
-            if (now - float(_abuse_state[k].get("last", 0.0))) > 3600:
-                _abuse_state.pop(k, None)
-    except Exception:
-        return
-
-
-def _user_id_cookie_name() -> str:
-    return (os.environ.get("USER_ID_COOKIE_NAME") or "schemaforms_uid").strip() or "schemaforms_uid"
-
-
-def _user_id_cookie_max_age_seconds() -> int:
-    raw = os.environ.get("USER_ID_COOKIE_MAX_AGE_SECONDS")
-    try:
-        if raw is None:
-            # ~6 months
-            return 180 * 24 * 60 * 60
-        return max(60, int(raw))
-    except Exception:
-        return 180 * 24 * 60 * 60
-
-
-def _is_local_mode() -> bool:
-    for key in ("APP_ENV", "ENVIRONMENT", "ENV"):
-        raw = (os.environ.get(key) or "").strip().lower()
-        if raw in {"local", "dev", "development"}:
-            return True
-    return _truthy_env("LOCAL_MODE", default=False)
-
-
-def _get_or_create_request_id(request: Request) -> str:
-    rid = (request.headers.get("x-request-id") or "").strip()
-    return rid or uuid4().hex
-
-
-def _get_or_create_user_id(request: Request) -> tuple[str, bool]:
-    cookie_name = _user_id_cookie_name()
-    existing = (request.cookies.get(cookie_name) or "").strip()
-    if existing:
-        return existing, False
-    return uuid4().hex, True
-
-
-def _request_log_context(request: Request) -> dict:
-    client_ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
-    return {
-        "request_id": getattr(request.state, "request_id", None),
-        "user_id": getattr(request.state, "user_id", None),
-        "method": request.method,
-        "path": request.url.path,
-        "client_ip": client_ip,
-        "user_agent": request.headers.get("user-agent"),
-        "referer": request.headers.get("referer"),
-    }
-
-
-@app.on_event("startup")
-async def _startup_init_analytics() -> None:
-    try:
-        init_db()
-
-        if _is_local_mode() and _truthy_env("ANALYTICS_SEED_LOCAL_IPS", default=True):
-            # One-time local seed for dashboard demo data.
-            seed_local_ip_examples(force=False)
-    except Exception:
-        # Analytics must never prevent the app from starting.
-        return
-
-    # IP geo lookup runs as a background task (single-leader across workers).
-    try:
-        if ip_geo_enabled() and ip_geo_worker_enabled():
-            stop_event = asyncio.Event()
-            task = asyncio.create_task(run_ip_geo_worker(stop_event=stop_event))
-            app.state.ip_geo_stop_event = stop_event
-            app.state.ip_geo_task = task
-    except Exception:
-        # Never block startup for this optional feature.
-        return
-
-
-@app.on_event("shutdown")
-async def _shutdown_ip_geo_worker() -> None:
-    try:
-        stop_event = getattr(app.state, "ip_geo_stop_event", None)
-        task = getattr(app.state, "ip_geo_task", None)
-        if stop_event is not None:
-            try:
-                stop_event.set()
-            except Exception:
-                pass
-        if task is not None:
-            try:
-                task.cancel()
-            except Exception:
-                pass
-    except Exception:
-        return
-
-
-def _dashboard_token_required() -> str:
-    """Return the required dashboard token.
-
-    Security posture: fail closed.
-    - If DASHBOARD_TOKEN is not configured, dashboards/APIs must not be public.
-    """
-
-    token = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
-    if not token:
-        raise HTTPException(status_code=503, detail="DASHBOARD_TOKEN must be set")
+def issue_register_csrf_token(request: Request) -> str:
+    """Issue and persist a CSRF token for the registration demo flow."""
+    token = secrets.token_urlsafe(32)
+    request.session[REGISTER_CSRF_SESSION_KEY] = token
     return token
 
 
-def _dashboard_cookie_name() -> str:
-    return "schemaforms_dashboard_token"
+def verify_register_csrf_token(request: Request, submitted_token) -> bool:
+    """Verify a submitted registration token using constant-time compare."""
+    expected_token = request.session.get(REGISTER_CSRF_SESSION_KEY)
+    if not expected_token or not submitted_token:
+        return False
+    return hmac.compare_digest(str(expected_token), str(submitted_token))
 
 
-def _dashboard_cookie_ttl_seconds() -> int:
-    # Default to 30 minutes; can be overridden if desired.
-    raw = os.environ.get("DASHBOARD_COOKIE_TTL_SECONDS")
-    try:
-        if raw is None:
-            return 30 * 60
-        return max(60, int(raw))
-    except Exception:
-        return 30 * 60
+_base_dir = Path(__file__).resolve().parent
 
+templates = Jinja2Templates(directory=_base_dir / 'templates')
 
-_dashboard_ip_modal_registry: dict[str, dict[str, Any]] = {}
 
-
-def _dashboard_ip_modal_prune(now: float | None = None) -> None:
-    ts = now if now is not None else time.time()
-    try:
-        for key in list(_dashboard_ip_modal_registry.keys()):
-            meta = _dashboard_ip_modal_registry.get(key) or {}
-            if float(meta.get("expires_at", 0.0)) <= ts:
-                _dashboard_ip_modal_registry.pop(key, None)
-    except Exception:
-        return
-
-
-def _dashboard_ip_modal_store(request: Request, payload: dict[str, Any]) -> str:
-    now = time.time()
-    _dashboard_ip_modal_prune(now)
-
-    key = uuid4().hex
-    _dashboard_ip_modal_registry[key] = {
-        "payload": payload,
-        "user_id": getattr(request.state, "user_id", None),
-        "expires_at": now + float(_dashboard_cookie_ttl_seconds()),
-    }
-    return key
-
-
-def _dashboard_ip_modal_lookup(request: Request, lookup_id: str) -> dict[str, Any] | None:
-    # Only accept canonical UUID-ish values.
-    try:
-        UUID(str(lookup_id))
-    except Exception:
-        return None
-
-    now = time.time()
-    _dashboard_ip_modal_prune(now)
-
-    meta = _dashboard_ip_modal_registry.get(str(lookup_id))
-    if not meta:
-        return None
-
-    expires_at = float(meta.get("expires_at", 0.0))
-    if expires_at <= now:
-        _dashboard_ip_modal_registry.pop(str(lookup_id), None)
-        return None
-
-    expected_user_id = meta.get("user_id")
-    current_user_id = getattr(request.state, "user_id", None)
-    if expected_user_id and current_user_id and expected_user_id != current_user_id:
-        return None
-
-    payload = meta.get("payload")
-    if isinstance(payload, dict):
-        return payload
-    return None
-
-
-def _request_is_https(request: Request) -> bool:
-    xf_proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
-    if xf_proto:
-        return xf_proto == "https"
-    return (request.url.scheme or "").lower() == "https"
-
-
-def _token_from_request(request: Request) -> str:
-    header_token = (request.headers.get("x-dashboard-token") or "").strip()
-    if header_token:
-        return header_token
-    return (request.query_params.get("token") or "").strip()
-
-
-def _maybe_set_dashboard_cookie_from_token(request: Request, response: Response) -> None:
-    try:
-        required = _dashboard_token_required()
-    except HTTPException:
-        return
-
-    presented = _token_from_request(request)
-    if not presented:
-        return
-
-    if presented != required:
-        return
-
-    response.set_cookie(
-        key=_dashboard_cookie_name(),
-        value=required,
-        max_age=_dashboard_cookie_ttl_seconds(),
-        httponly=True,
-        samesite="lax",
-        secure=_request_is_https(request),
-        path="/",
-    )
-
-
-def _require_dashboard_auth(request: Request) -> None:
-    required = _dashboard_token_required()
-
-    # Allow either header auth, query param, or an HttpOnly cookie.
-    presented = _token_from_request(request)
-    if presented == required:
-        return
-
-    cookie_val = (request.cookies.get(_dashboard_cookie_name()) or "").strip()
-    if cookie_val == required:
-        return
-    raise HTTPException(status_code=401, detail="Dashboard token required")
-
-
-@app.middleware("http")
-async def analytics_middleware(request: Request, call_next):
-    start = time.perf_counter()
-
-    request_id = _get_or_create_request_id(request)
-    user_id, should_set_user_cookie = _get_or_create_user_id(request)
-    request.state.request_id = request_id
-    request.state.user_id = user_id
-
-    path = request.url.path
-    # Keep noise down.
-    if path.startswith("/static") or path in {"/favicon.ico"}:
-        return await call_next(request)
-
-    # Inconvenience obvious scanner probes without impacting legitimate 404s.
-    if _antihack_enabled() and _looks_like_scan_path(path):
-        now = time.time()
-        key = _abuse_key(request)
-        state = _abuse_state.get(key) or {"score": 0.0, "last": now, "blocked_until": 0.0}
-
-        # Limit concurrent tarpits per IP to avoid tying up the server.
-        inflight = int(float(state.get("inflight", 0.0) or 0.0))
-        max_inflight = _antihack_max_inflight_per_ip()
-        if inflight >= max_inflight:
-            state.update({"last": now, "inflight": float(inflight)})
-            _abuse_state[key] = state
-            _abuse_gc(now)
-            return PlainTextResponse(
-                content="Too Many Requests",
-                status_code=429,
-                headers={"Retry-After": "60"},
-            )
-
-        state["inflight"] = float(inflight + 1)
-        _abuse_state[key] = state
-
-        try:
-            # Decay score over time to avoid permanent penalty.
-            last = float(state.get("last", now))
-            score = float(state.get("score", 0.0))
-            score = max(0.0, score - (now - last) * 0.35)
-
-            score += 2.0
-            blocked_until = float(state.get("blocked_until", 0.0))
-            if blocked_until and now < blocked_until:
-                state.update({"score": score, "last": now, "blocked_until": blocked_until})
-                _abuse_state[key] = state
-                _abuse_gc(now)
-                return PlainTextResponse(
-                    content="Too Many Requests",
-                    status_code=429,
-                    headers={"Retry-After": str(int(max(1, blocked_until - now)))},
-                )
-
-            if score >= 14.0:
-                blocked_until = now + 60 * 30
-                state.update({"score": score, "last": now, "blocked_until": blocked_until})
-                _abuse_state[key] = state
-                _abuse_gc(now)
-                return PlainTextResponse(
-                    content="Too Many Requests",
-                    status_code=429,
-                    headers={"Retry-After": "1800"},
-                )
-
-            # Tarpit: either a configured long delay, or a small delay that grows with score.
-            forced = _antihack_tarpit_seconds()
-            delay = float(forced) if forced is not None else min(1.25, 0.05 * (score**1.35))
-
-            state.update({"score": score, "last": now, "blocked_until": 0.0})
-            _abuse_state[key] = state
-            _abuse_gc(now)
-            try:
-                await asyncio.sleep(delay)
-            except Exception:
-                pass
-
-            redirect_url = _antihack_redirect_url() or "/security"
-            # If you set a redirect URL, keep it explicit and small.
-            # Avoid huge downloads or third-party sites (wastes bandwidth and can backfire).
-            if redirect_url:
-                try:
-                    return RedirectResponse(url=redirect_url, status_code=302)
-                except Exception:
-                    pass
-
-            return PlainTextResponse(content="Not Found", status_code=404)
-        finally:
-            try:
-                s = _abuse_state.get(key) or state
-                cur = int(float(s.get("inflight", 1.0) or 1.0))
-                s["inflight"] = float(max(0, cur - 1))
-                _abuse_state[key] = s
-            except Exception:
-                pass
-
-    try:
-        response = await call_next(request)
-    except Exception as exc:
-        duration_ms = int((time.perf_counter() - start) * 1000)
-        client_ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
-        country = extract_country(dict(request.headers))
-
-        logger.error(
-            json.dumps(
-                {
-                    "event": "request.error",
-                    "status_code": 500,
-                    "duration_ms": duration_ms,
-                    **_request_log_context(request),
-                    "kind": exc.__class__.__name__,
-                    "message": str(exc) or exc.__class__.__name__,
-                },
-                default=str,
-            )
-        )
-
-        record_request(
-            request_id=request_id,
-            user_id=user_id,
-            method=request.method,
-            path=path,
-            status_code=500,
-            duration_ms=duration_ms,
-            client_ip=client_ip,
-            country=country,
-            user_agent=request.headers.get("user-agent"),
-            referer=request.headers.get("referer"),
-        )
-        raise
-
-    duration_ms = int((time.perf_counter() - start) * 1000)
-    client_ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
-    country = extract_country(dict(request.headers))
-
-    # Attach IDs so they show up in browser devtools + downstream logs.
-    try:
-        response.headers["x-request-id"] = request_id
-    except Exception:
-        pass
-
-    if should_set_user_cookie:
-        try:
-            response.set_cookie(
-                key=_user_id_cookie_name(),
-                value=user_id,
-                max_age=_user_id_cookie_max_age_seconds(),
-                httponly=True,
-                samesite="lax",
-                secure=_request_is_https(request),
-                path="/",
-            )
-        except Exception:
-            pass
-
-    logger.info(
-        json.dumps(
-            {
-                "event": "request",
-                "status_code": getattr(response, "status_code", 200),
-                "duration_ms": duration_ms,
-                **_request_log_context(request),
-            },
-            default=str,
-        )
-    )
-
-    record_request(
-        request_id=request_id,
-        user_id=user_id,
-        method=request.method,
-        path=path,
-        status_code=getattr(response, "status_code", 200),
-        duration_ms=duration_ms,
-        client_ip=client_ip,
-        country=country,
-        user_agent=request.headers.get("user-agent"),
-        referer=request.headers.get("referer"),
-    )
-    return response
-
-
-def _log_user_action(
-    request: Request, *, action: str, success: bool, details: dict | None = None
-) -> None:
-    # Never throw from logging.
-    try:
-        payload = {
-            "event": "user_action",
-            "action": action,
-            "success": bool(success),
-            **_request_log_context(request),
-        }
-        if details:
-            payload["details"] = details
-        logger.info(json.dumps(payload, default=str))
-    except Exception:
-        return
-
-
-def _error_fields_for_log(errors) -> list[str] | None:
-    try:
-        if isinstance(errors, dict):
-            return sorted(str(k) for k in errors.keys())
-        # Some validators may return a list of error objects.
-        if isinstance(errors, list):
-            fields: set[str] = set()
-            for item in errors:
-                if isinstance(item, dict):
-                    loc = item.get("loc")
-                    if isinstance(loc, (list, tuple)) and loc:
-                        fields.add(str(loc[0]))
-            return sorted(fields) if fields else None
-        return None
-    except Exception:
-        return None
-
-
-def _normalize_asset_mode(asset_mode: str) -> str:
-    """Normalize asset mode values to the library's expected vocabulary."""
-    normalized = (asset_mode or "").strip().lower()
-    if normalized in {"vendored", "cdn", "none"}:
-        return normalized
-    # Back-compat / forgiving parsing
-    if normalized in {"vendor", "embedded", "inline"}:
-        return "vendored"
-    return "vendored"
-
-
-def _form_mapping():
-    """Central mapping for both HTML routes and JSON API endpoints."""
-    mapping = {
-        "login": MinimalLoginForm,
-        "register": UserRegistrationForm,
-        "user": UserRegistrationForm,  # alias route in this demo
-        "contact": ContactForm,
-        "pets": PetRegistrationForm,
-        "showcase": CompleteShowcaseForm,
-        "layouts": LayoutDemonstrationForm,
-        "self-contained": UserRegistrationForm,
-    }
-
-    # Example parity: include the deeply nested organization model.
-    # This import is intentionally lazy to keep base startup fast.
-    try:
-        from .models import CompanyOrganizationForm
-
-        mapping["organization"] = CompanyOrganizationForm
-        mapping["organization-shared"] = CompanyOrganizationForm
-    except Exception:
-        # Never fail the main app if optional nested models are unavailable.
-        pass
-
-    return mapping
-
-
-def _parse_json_data_param(data: str | None) -> dict[str, Any] | None:
-    if not data:
-        return None
-    try:
-        parsed = json.loads(data)
-    except Exception:
-        return None
-    if isinstance(parsed, dict):
-        return parsed
-    return None
-
-
-# Setup directories
-BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "static"
-
-# Setup templating
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-
-# Custom JSON filter for templates
+# Add custom JSON filter that handles date objects
 def safe_json_filter(obj):
     """Custom JSON filter that handles date/datetime objects."""
+    import json
     from datetime import date, datetime
 
     def json_serial(o):
+        """JSON serializer for objects not serializable by default json code"""
         if isinstance(o, (datetime, date)):
             return o.isoformat()
-        elif hasattr(o, "__class__") and "Layout" in o.__class__.__name__:
-            return {
-                "type": o.__class__.__name__,
-                "description": f"Layout object: {o.__class__.__name__}",
+        # Handle layout objects (TabbedLayout, VerticalLayout, etc.)
+        elif isinstance(o, FormLayoutBase):
+            layout_name = o.__class__.__name__
+            tab_names = []
+            if hasattr(o, '_get_layouts'):
+                try:
+                    tab_names = [name for name, _ in o._get_layouts()]
+                except Exception:
+                    tab_names = []
+            payload = {
+                'type': layout_name,
+                'description': f'Layout object: {layout_name}',
             }
-        elif hasattr(o, "__dict__"):
+            if tab_names:
+                payload['tabs'] = tab_names
+            return payload
+        # Handle other common non-serializable objects
+        elif hasattr(o, '__dict__'):
             return str(o)
-        raise TypeError(f"Object of type {type(o)} is not JSON serializable")
+        raise TypeError(f'Object of type {type(o)} is not JSON serializable')
 
     return json.dumps(obj, indent=2, default=json_serial)
 
 
-templates.env.filters["safe_json"] = safe_json_filter
+# Register the custom filter
+templates.env.filters['safe_json'] = safe_json_filter
 
-# Mount static files
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# Mount /static to serve images (for favicon, etc.)
+app.mount('/static', StaticFiles(directory=_base_dir / 'static'), name='static')
 
-# ============================================================================
-# UTILITY FUNCTIONS
-# ============================================================================
 
+@app.get('/vendor/bootstrap-icons.css', tags=['System'])
+async def vendor_bootstrap_icons_css():
+    """Serve the vendored Bootstrap Icons CSS with the woff2 font embedded as a data URI."""
+    css = bootstrap_icons_css_content()
+    return Response(content=css, media_type='text/css')
 
-def get_referer_path(request: Request) -> str:
-    """Get referer path from request."""
-    referer = request.headers.get("referer", "/")
-    if referer:
-        parsed_referer = urlparse(referer)
-        referer_path = parsed_referer.path
-        referer_query = parsed_referer.query
-        full_referer_path = f"{referer_path}?{referer_query}" if referer_query else referer_path
-        return full_referer_path
-    return "/"
 
-
-# ============================================================================
-# HOME PAGE
-# ============================================================================
-
-
-@app.get("/", response_class=HTMLResponse, tags=["Examples"])
-async def home(request: Request):
-    """Home page showcasing all form examples."""
-    return templates.TemplateResponse(
-        request,
-        "home.html",
-        {
-            "request": request,
-            "framework": "fastapi",
-            "framework_name": "FastAPI",
-            "framework_type": "async",
-            "lib_version": pydantic_schemaforms.__version__,
-            "renderer_info": "render_form_html_async",
-        },
-    )
-
-
-# ============================================================================
-# LOGIN FORM - SIMPLE
-# ============================================================================
-
-
-@app.get("/login", response_class=HTMLResponse, tags=["Examples"])
-async def login_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Login form page (GET)."""
-    csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
-
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {"username": "demo_user", "password": "demo_pass", "remember_me": True}
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        MinimalLoginForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/login?style={style}",
-        csrf_mode="required-provider",
-        csrf_token_provider=csrf_token,
-        csrf_field_name="csrf_token",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=False,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Login - Simple Form",
-            "description": "Demonstrates basic form fields, validation, and CSRF protection",
-            "security_highlight": _csrf_highlight_message(),
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "form_action": "/login",
-            "form_method": "post",
-        },
-    )
-
-
-@app.post("/login", response_class=HTMLResponse, tags=["Examples"])
-async def login_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Login form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    submitted_csrf_token = form_dict.pop("csrf_token", None)
-    csrf_error = "CSRF verification failed. Refresh the page and submit again."
-    if not _verify_csrf_token(request, LOGIN_CSRF_SESSION_KEY, submitted_csrf_token):
-        csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
-        parsed_data = parse_nested_form_data(form_dict)
-        form_html = await render_form_html_async(
-            MinimalLoginForm,
-            framework=style,
-            form_data=parsed_data,
-            errors={"form": csrf_error},
-            submit_url=f"/login?style={style}",
-            csrf_mode="required-provider",
-            csrf_token_provider=csrf_token,
-            csrf_field_name="csrf_token",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=True,
-        )
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Login - Simple Form",
-                "description": "Demonstrates basic form fields, validation, and CSRF protection",
-                "security_highlight": _csrf_highlight_message(),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": {"form": csrf_error},
-                "form_action": "/login",
-                "form_method": "post",
-            },
-            status_code=403,
-        )
-
-    result = handle_form_submission(MinimalLoginForm, form_dict)
-
-    _log_user_action(
-        request,
-        action="login.submit",
-        success=bool(result.get("success")),
-        details={
-            "username": (form_dict.get("username") or "").strip() or None,
-            "error_fields": _error_fields_for_log(result.get("errors")),
-        },
-    )
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        request.session.pop(LOGIN_CSRF_SESSION_KEY, None)
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Login Successful",
-                "message": f"Welcome {result['data']['username']}!",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        csrf_token = _issue_csrf_token(request, LOGIN_CSRF_SESSION_KEY)
-        form_html = await render_form_html_async(
-            MinimalLoginForm,
-            framework=style,
-            form_data=form_dict,
-            errors=result["errors"],
-            submit_url=f"/login?style={style}",
-            csrf_mode="required-provider",
-            csrf_token_provider=csrf_token,
-            csrf_field_name="csrf_token",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=True,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Login - Simple Form",
-                "description": "Demonstrates basic form fields, validation, and CSRF protection",
-                "security_highlight": _csrf_highlight_message(),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/login",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# REGISTRATION FORM - MEDIUM
-# ============================================================================
-
-
-@app.get("/register", response_class=HTMLResponse, tags=["Examples"])
-async def register_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """User registration form page (GET)."""
-    csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
-
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {
-            "username": "alex_johnson",
-            "email": "alex.johnson@example.com",
-            "password": "SecurePass123!",
-            "confirm_password": "SecurePass123!",
-            "age": 28,
-            "role": "user",
-        }
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        UserRegistrationForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/register?style={style}",
-        csrf_mode="required-provider",
-        csrf_token_provider=csrf_token,
-        csrf_field_name="csrf_token",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "User Registration - Medium Form",
-            "description": "Demonstrates multiple field types, validation, and CSRF protection",
-            "security_highlight": _csrf_highlight_message(),
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "form_action": "/register",
-            "form_method": "post",
-        },
-    )
-
-
-@app.post("/register", response_class=HTMLResponse, tags=["Examples"])
-async def register_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """User registration form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    submitted_csrf_token = form_dict.pop("csrf_token", None)
-    csrf_error = "CSRF verification failed. Refresh the page and submit again."
-    if not _verify_csrf_token(request, REGISTER_CSRF_SESSION_KEY, submitted_csrf_token):
-        csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
-        parsed_data = parse_nested_form_data(form_dict)
-        form_html = await render_form_html_async(
-            UserRegistrationForm,
-            framework=style,
-            form_data=parsed_data,
-            errors={"form": csrf_error},
-            submit_url=f"/register?style={style}",
-            csrf_mode="required-provider",
-            csrf_token_provider=csrf_token,
-            csrf_field_name="csrf_token",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=True,
-        )
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "User Registration - Medium Form",
-                "description": "Demonstrates multiple field types, validation, and CSRF protection",
-                "security_highlight": _csrf_highlight_message(),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": {"form": csrf_error},
-                "form_action": "/register",
-                "form_method": "post",
-            },
-            status_code=403,
-        )
-
-    result = handle_form_submission(UserRegistrationForm, form_dict)
-
-    _log_user_action(
-        request,
-        action="register.submit",
-        success=bool(result.get("success")),
-        details={
-            "username": (form_dict.get("username") or "").strip() or None,
-            "email": (form_dict.get("email") or "").strip() or None,
-            "error_fields": _error_fields_for_log(result.get("errors")),
-        },
-    )
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        request.session.pop(REGISTER_CSRF_SESSION_KEY, None)
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Registration Successful",
-                "message": f"Welcome {result['data']['username']}! Your account has been created.",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        csrf_token = _issue_csrf_token(request, REGISTER_CSRF_SESSION_KEY)
-        form_html = await render_form_html_async(
-            UserRegistrationForm,
-            framework=style,
-            form_data=form_dict,
-            errors=result["errors"],
-            submit_url=f"/register?style={style}",
-            csrf_mode="required-provider",
-            csrf_token_provider=csrf_token,
-            csrf_field_name="csrf_token",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=False,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "User Registration - Medium Form",
-                "description": "Demonstrates multiple field types, validation, and CSRF protection",
-                "security_highlight": _csrf_highlight_message(),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/register",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# USER ENDPOINT - ALIAS FOR REGISTRATION
-# ============================================================================
-
-
-@app.get("/user", response_class=HTMLResponse, tags=["Examples"])
-async def user_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Alias for user registration form."""
-    return await register_get(
-        request,
-        style=style,
-        data=data,
-        demo=demo,
-        debug=debug,
-        show_timing=show_timing,
-    )
-
-
-@app.post("/user", response_class=HTMLResponse, tags=["Examples"])
-async def user_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Alias for user registration form submission."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    result = handle_form_submission(UserRegistrationForm, form_dict)
-
-    _log_user_action(
-        request,
-        action="user.submit",
-        success=bool(result.get("success")),
-        details={
-            "username": (form_dict.get("username") or "").strip() or None,
-            "email": (form_dict.get("email") or "").strip() or None,
-            "error_fields": _error_fields_for_log(result.get("errors")),
-        },
-    )
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Registration Successful",
-                "message": f"Welcome {result['data']['username']}! Your account has been created.",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        form_html = await render_form_html_async(
-            UserRegistrationForm,
-            framework=style,
-            form_data=form_dict,
-            errors=result["errors"],
-            submit_url=f"/user?style={style}",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=False,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "User Registration - Medium Form",
-                "description": "Demonstrates multiple field types and validation",
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/user",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# CONTACT FORM
-# ============================================================================
-
-
-@app.get("/contact", response_class=HTMLResponse, tags=["Examples"])
-async def contact_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Contact form page (GET)."""
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {
-            "name": "Jordan Smith",
-            "email": "jordan.smith@example.com",
-            "subject": "Product Inquiry - Premium Features",
-            "priority": "medium",
-            "message": "Hello! I'm interested in learning more about your premium features and pricing options. Could you please provide detailed information about the enterprise plan and any volume discounts available? Thank you!",
-        }
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        ContactForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/contact?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Contact Us",
-            "description": "Get in touch with us about pydantic-schemaforms",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "form_action": "/contact",
-            "form_method": "post",
-        },
-    )
-
-
-@app.post("/contact", response_class=HTMLResponse, tags=["Examples"])
-async def contact_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Contact form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    result = handle_form_submission(ContactForm, form_dict)
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Message Sent",
-                "message": "Thank you for contacting us! We'll get back to you soon.",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        form_html = await render_form_html_async(
-            ContactForm,
-            framework=style,
-            form_data=form_dict,
-            errors=result["errors"],
-            submit_url=f"/contact?style={style}",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=False,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Contact Us",
-                "description": "Get in touch with us about pydantic-schemaforms",
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/contact",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# PET REGISTRATION FORM - COMPLEX
-# ============================================================================
-
-
-@app.get("/pets", response_class=HTMLResponse, tags=["Examples"])
-async def pets_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Pet registration form page (GET)."""
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {
-            "owner_name": "Sarah Mitchell",
-            "email": "sarah.mitchell@example.com",
-            "address": "123 Main Street\r\nApt 4B\r\nSpringfield, IL 62701",
-            "emergency_contact": "John Mitchell - (555) 123-4567",
-            "pets": [
-                {
-                    "name": "Max",
-                    "species": "Dog",
-                    "age": 3,
-                    "weight": 65.5,
-                    "is_vaccinated": False,
-                    "microchipped": True,
-                    "breed": "Golden Retriever",
-                    "color": "#000000",
-                    "last_vet_visit": "2026-01-03",
-                    "special_needs": "Allergic to chicken-based foods",
-                },
-                {
-                    "name": "Luna",
-                    "species": "Dog",
-                    "age": 2,
-                    "weight": 8.5,
-                    "is_vaccinated": False,
-                    "microchipped": True,
-                    "breed": "Siamese",
-                    "color": "#000000",
-                    "last_vet_visit": "2026-01-04",
-                    "special_needs": "Indoor only, needs daily medication for thyroid",
-                },
-            ],
-        }
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        PetRegistrationForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/pets?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Pet Registration - Complex Form",
-            "description": "Demonstrates model lists and nested forms",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "form_action": "/pets",
-            "form_method": "post",
-        },
-    )
-
-
-@app.post("/pets", response_class=HTMLResponse, tags=["Examples"])
-async def pets_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Pet registration form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    result = handle_form_submission(PetRegistrationForm, form_dict)
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Registration Complete",
-                "message": f"Thank you {result['data']['owner_name']}! Your pets have been registered.",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        try:
-            parsed_form_data = parse_nested_form_data(form_dict)
-        except Exception:
-            parsed_form_data = form_dict
-
-        form_html = await render_form_html_async(
-            PetRegistrationForm,
-            framework=style,
-            form_data=parsed_form_data,
-            errors=result["errors"],
-            submit_url=f"/pets?style={style}",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=True,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Pet Registration - Complex Form",
-                "description": "Demonstrates model lists and nested forms",
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/pets",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# COMPLETE SHOWCASE FORM
-# ============================================================================
-
-
-@app.get("/showcase", response_class=HTMLResponse, tags=["Examples"])
-async def showcase_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Complete showcase form page (GET)."""
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {
-            "first_name": "Alex",
-            "last_name": "Johnson",
-            "email": "alex.johnson@example.com",
-            "phone": "+1 (555) 234-5678",
-            "birth_date": "1995-06-15",
-            "age": 28,
-            "favorite_color": "#3498db",
-            "experience_level": "intermediate",
-            "newsletter_subscription": True,
-            "rating": 8,
-            "address": "456 Oak Avenue\nUnit 12\nDowntown District",
-            "country": "US",
-            "pets": [
-                {
-                    "name": "Buddy",
-                    "species": "dog",
-                    "breed": "Labrador",
-                    "age": 4,
-                    "weight": 70.0,
-                    "microchipped": True,
-                    "vaccination_date": "2024-03-10",
-                    "special_needs": "Needs hip medication twice daily",
-                },
-                {
-                    "name": "Whiskers",
-                    "species": "cat",
-                    "breed": "Maine Coon",
-                    "age": 5,
-                    "weight": 12.5,
-                    "microchipped": True,
-                    "vaccination_date": "2024-04-05",
-                    "special_needs": "Requires grain-free diet",
-                },
-            ],
-            "emergency_contacts": [
-                {
-                    "name": "Emma Johnson",
-                    "relationship": "spouse",
-                    "phone": "+1 (555) 345-6789",
-                    "email": "emma.johnson@example.com",
-                    "available_24_7": True,
-                },
-                {
-                    "name": "Robert Johnson",
-                    "relationship": "parent",
-                    "phone": "+1 (555) 456-7890",
-                    "email": "robert.johnson@example.com",
-                    "available_24_7": False,
-                },
-            ],
-            "special_requests": "Please contact me via email for all communications. I work night shifts and may not be available by phone during the day.",
-            "terms_accepted": True,
-        }
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        CompleteShowcaseForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/showcase?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Complete Showcase - Complex Form",
-            "description": "Demonstrates ALL library features: model lists, sections, all input types",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "form_action": "/showcase",
-            "form_method": "post",
-        },
-    )
-
-
-@app.post("/showcase", response_class=HTMLResponse, tags=["Examples"])
-async def showcase_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Complete showcase form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    result = handle_form_submission(CompleteShowcaseForm, form_dict)
-    full_referer_path = get_referer_path(request)
-
-    if result["success"]:
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Showcase Form Submitted Successfully",
-                "message": "All form data processed successfully!",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-    else:
-        try:
-            parsed_form_data = parse_nested_form_data(form_dict)
-        except Exception:
-            parsed_form_data = form_dict
-
-        form_html = await render_form_html_async(
-            CompleteShowcaseForm,
-            framework=style,
-            form_data=parsed_form_data,
-            errors=result["errors"],
-            submit_url=f"/showcase?style={style}",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=True,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Complete Showcase - Complex Form",
-                "description": "Demonstrates ALL library features: model lists, sections, all input types",
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": result["errors"],
-                "form_action": "/showcase",
-                "form_method": "post",
-            },
-        )
-
-
-# ============================================================================
-# LAYOUT DEMONSTRATION FORM
-# ============================================================================
-
-
-@app.get("/layouts", response_class=HTMLResponse, tags=["Examples"])
-async def layouts_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Layout demonstration form page (GET)."""
-    prefill = _parse_json_data_param(data)
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        form_data = {
-            "vertical_tab": {
-                "first_name": "Alex",
-                "last_name": "Johnson",
-                "email": "alex.johnson@example.com",
-                "birth_date": "1990-05-15",
-            },
-            "horizontal_tab": {
-                "phone": "+1 (555) 987-6543",
-                "address": "456 Demo Street",
-                "city": "San Francisco",
-                "postal_code": "94102",
-            },
-            "tabbed_tab": {
-                "notification_email": True,
-                "notification_sms": False,
-                "theme": "dark",
-                "language": "en",
-            },
-            "list_tab": {
-                "project_name": "Website Redesign Project",
-                "tasks": [
-                    {
-                        "task_name": "Complete project setup and requirements gathering",
-                        "priority": "high",
-                        "due_date": "2024-12-01",
-                        "completed": False,
-                    },
-                    {
-                        "task_name": "Design mockups and wireframes",
-                        "priority": "medium",
-                        "due_date": "2024-12-15",
-                        "completed": False,
-                    },
-                ],
-            },
-        }
-    else:
-        form_data = {}
-
-    form_html = await render_form_html_async(
-        LayoutDemonstrationForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/layouts?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Layout Demonstration - All Types",
-            "description": "Single form showcasing Vertical, Horizontal, Tabbed, and List layouts",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-        },
-    )
-
-
-@app.post("/layouts", response_class=HTMLResponse, tags=["Examples"])
-async def layouts_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Layout demonstration form submission (POST)."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-    full_referer_path = get_referer_path(request)
-
-    result = handle_form_submission(
-        LayoutDemonstrationForm,
-        form_dict,
-        success_message="All layout types processed successfully!",
-    )
-
-    if result["success"]:
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Layout Demo Submitted Successfully",
-                "message": "All layout types processed successfully!",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-
-    try:
-        parsed_data = parse_nested_form_data(form_dict)
-    except Exception:
-        parsed_data = {}
-
-    form_html = await render_form_html_async(
-        LayoutDemonstrationForm,
-        framework=style,
-        form_data=parsed_data,
-        errors=result.get("errors") or {},
-        submit_url=f"/layouts?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Layout Demonstration - All Types",
-            "description": "Single form showcasing Vertical, Horizontal, Tabbed, and List layouts",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "errors": result.get("errors") or {},
-        },
-    )
-
-
-# =========================================================================
-# STRESS TEST - DEEPLY NESTED FORMS (EXAMPLES PARITY)
-# =========================================================================
-
-
-@app.get("/organization", response_class=HTMLResponse, tags=["Examples"])
-async def organization_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Comprehensive Tabbed Interface (6 tabs) from the original examples."""
-    csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
-
-    prefill = _parse_json_data_param(data)
-
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        from .nested_forms_models import create_comprehensive_sample_data
-
-        form_data = create_comprehensive_sample_data()
-    else:
-        form_data = {}
-
-    from .nested_forms_models import ComprehensiveTabbedForm
-
-    form_html = await render_form_html_async(
-        ComprehensiveTabbedForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/organization?style={style}",
-        csrf_mode="required-provider",
-        csrf_token_provider=csrf_token,
-        csrf_field_name="csrf_token",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
-            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
-            "security_highlight": _csrf_highlight_message(),
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-        },
-    )
-
-
-@app.post("/organization", response_class=HTMLResponse, tags=["Examples"])
-async def organization_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Handle submission for the 6-tab comprehensive nested example."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-
-    submitted_csrf_token = form_dict.pop("csrf_token", None)
-    csrf_error = "CSRF verification failed. Refresh the page and submit again."
-    if not _verify_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY, submitted_csrf_token):
-        csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
-        try:
-            parsed_form_data = parse_nested_form_data(form_dict)
-        except Exception:
-            parsed_form_data = form_dict
-
-        from .nested_forms_models import ComprehensiveTabbedForm
-
-        form_html = await render_form_html_async(
-            ComprehensiveTabbedForm,
-            framework=style,
-            form_data=parsed_form_data,
-            errors={"form": csrf_error},
-            submit_url=f"/organization?style={style}",
-            csrf_mode="required-provider",
-            csrf_token_provider=csrf_token,
-            csrf_field_name="csrf_token",
-            debug=debug,
-            show_timing=show_timing,
-            enable_logging=False,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "form.html",
-            {
-                "request": request,
-                "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
-                "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
-                "security_highlight": _csrf_highlight_message(),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "framework_type": style,
-                "form_html": form_html,
-                "errors": {"form": csrf_error},
-            },
-            status_code=403,
-        )
-
-    full_referer_path = get_referer_path(request)
-
-    from .nested_forms_models import ComprehensiveTabbedForm
-
-    result = handle_form_submission(ComprehensiveTabbedForm, form_dict)
-
-    if result.get("success"):
-        request.session.pop(ORGANIZATION_CSRF_SESSION_KEY, None)
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Comprehensive Form Submitted Successfully! 🎉",
-                "message": "All 6 tabs of data have been successfully processed!",
-                "data": result.get("data"),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-
-    csrf_token = _issue_csrf_token(request, ORGANIZATION_CSRF_SESSION_KEY)
-
-    try:
-        parsed_form_data = parse_nested_form_data(form_dict)
-    except Exception:
-        parsed_form_data = form_dict
-
-    form_html = await render_form_html_async(
-        ComprehensiveTabbedForm,
-        framework=style,
-        form_data=parsed_form_data,
-        errors=result.get("errors") or {},
-        submit_url=f"/organization?style={style}",
-        csrf_mode="required-provider",
-        csrf_token_provider=csrf_token,
-        csrf_field_name="csrf_token",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=False,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Comprehensive Tabbed Interface - 6 Tabs! 🚀",
-            "description": "Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings, with CSRF protection",
-            "security_highlight": _csrf_highlight_message(),
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "errors": result.get("errors") or {},
-        },
-    )
-
-
-@app.get("/organization-shared", response_class=HTMLResponse, tags=["Examples"])
-async def organization_shared_get(
-    request: Request,
-    style: str = "bootstrap",
-    data: str | None = None,
-    demo: bool = True,
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Organization-only demo using reusable shared models from the examples."""
-    prefill = _parse_json_data_param(data)
-
-    if prefill is not None:
-        form_data = prefill
-    elif demo:
-        from .models import create_sample_nested_data
-
-        form_data = create_sample_nested_data()
-    else:
-        form_data = {}
-
-    from .models import CompanyOrganizationForm
-
-    form_html = await render_form_html_async(
-        CompanyOrganizationForm,
-        framework=style,
-        form_data=form_data,
-        submit_url=f"/organization-shared?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=True,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in models.py.",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-        },
-    )
-
-
-@app.post("/organization-shared", response_class=HTMLResponse, tags=["Examples"])
-async def organization_shared_post(
-    request: Request,
-    style: str = "bootstrap",
-    debug: bool = False,
-    show_timing: bool = True,
-):
-    """Handle organization-only shared form submission."""
-    form_data = await request.form()
-    form_dict = dict(form_data)
-    full_referer_path = get_referer_path(request)
-
-    from .models import CompanyOrganizationForm
-
-    result = handle_form_submission(CompanyOrganizationForm, form_dict)
-
-    if result.get("success"):
-        return templates.TemplateResponse(
-            request,
-            "success.html",
-            {
-                "request": request,
-                "title": "Organization Shared Form Submitted Successfully! 🎉",
-                "message": "Organization hierarchy data has been successfully processed!",
-                "data": result.get("data"),
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
-            },
-        )
-
-    form_html = await render_form_html_async(
-        CompanyOrganizationForm,
-        framework=style,
-        form_data=form_dict,
-        errors=result.get("errors") or {},
-        submit_url=f"/organization-shared?style={style}",
-        debug=debug,
-        show_timing=show_timing,
-        enable_logging=False,
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "form.html",
-        {
-            "request": request,
-            "title": "Organization (Shared Models) - 5 Levels Deep 🏢",
-            "description": "Reusable organization-only example powered by models in models.py.",
-            "framework": "fastapi",
-            "framework_name": "FastAPI (Async)",
-            "framework_type": style,
-            "form_html": form_html,
-            "errors": result.get("errors") or {},
-        },
-    )
-
-
-# ============================================================================
-# SELF-CONTAINED FORM DEMO
-# ============================================================================
-
-
-@app.get("/self-contained", response_class=HTMLResponse, tags=["Examples"])
-async def self_contained(style: str = "material", demo: bool = True, debug: bool = True):
-    """Self-contained form demo - zero external dependencies."""
-
-    def _build_self_contained_page(
-        *,
-        style: str,
-        demo: bool,
-        debug: bool,
-        form_data: dict | None = None,
-        errors: dict | None = None,
-    ) -> str:
-        style = (style or "").strip().lower()
-        if style not in {"bootstrap", "material"}:
-            raise HTTPException(status_code=400, detail="style must be 'bootstrap' or 'material'")
-
-        if form_data is None:
-            form_data = {}
-            if demo:
-                form_data = {
-                    "username": "alex_demo_user",
-                    "email": "alex.demo@example.com",
-                    "password": "SecurePass123!",
-                    "confirm_password": "SecurePass123!",
-                    "age": 28,
-                    "role": "user",
-                }
-
-        # Render with vendored (inlined) assets for a truly self-contained page.
-        # - Bootstrap: inlines vendored Bootstrap CSS/JS.
-        # - Material: renderer already embeds its required assets.
-        form_html = render_form_html(
-            UserRegistrationForm,
-            framework=style,
-            form_data=form_data,
-            errors=errors or {},
-            submit_url=f"/self-contained?style={style}&demo={str(bool(demo)).lower()}&debug={str(bool(debug)).lower()}",
-            debug=debug,
-            self_contained=True,
-        )
-
-        style_name = "Material Design 3" if style == "material" else "Bootstrap 5"
-        source_url = f"/self-contained/source?style={style}&demo={str(bool(demo)).lower()}&debug={str(bool(debug)).lower()}"
-
-        error_html = ""
-        if errors:
-            error_items = "".join(f"<li>{k}: {v}</li>" for k, v in errors.items())
-            error_html = (
-                "<div style='background: #fee; padding: 15px; border-radius: 8px; margin-bottom: 20px;'>"
-                "<strong>⚠️ Validation Errors:</strong><ul>"
-                f"{error_items}"
-                "</ul></div>"
-            )
-
-        return f"""<!DOCTYPE html>
+def render_self_contained_demo_page(selected_style: str, form_html: str, renderer_name: str) -> str:
+    """Build the self-contained demo page shared by GET/POST handlers."""
+    escaped_form_html = form_html.replace('<', '&lt;').replace('>', '&gt;')
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Self-Contained Form Demo - {style_name}</title>
+    <title>Self-Contained Form Demo</title>
 </head>
 <body style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui;">
-    <h1>🎯 Self-Contained Form Demo (FastAPI)</h1>
+    <h1>Self-Contained Form Demo (FastAPI)</h1>
     <p><strong>This form includes ZERO external dependencies!</strong></p>
-    <p>Current style: <strong>{style_name}</strong></p>
+    <p><strong>Selected Style:</strong> <code>{selected_style}</code></p>
     <p>Everything needed is embedded in the form HTML below:</p>
-
-    <div style="margin: 10px 0 20px; text-align: center;">
-        <a href="{source_url}" style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: #111827; color: white; text-decoration: none; border-radius: 4px;">
-            View Source
-        </a>
-    </div>
-
-    {error_html}
-
-    <div style="margin-bottom: 20px; text-align: center;">
-        <a href="/self-contained?style=bootstrap&demo=true&debug=true" 
-           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#0d6efd' if style == 'bootstrap' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
-            Bootstrap
-        </a>
-        <a href="/self-contained?style=material&demo=true&debug=true" 
-           style="display: inline-block; padding: 8px 16px; margin: 0 5px; background: {'#1976d2' if style == 'material' else '#6c757d'}; color: white; text-decoration: none; border-radius: 4px;">
-            Material
-        </a>
-    </div>
 
     <div style="border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; background: #f8f9fa;">
         {form_html}
     </div>
 
     <div style="margin-top: 30px; padding: 20px; background: #e7f3ff; border-radius: 8px;">
-        <h3>🔧 What's Included:</h3>
+        <h3>What's Included:</h3>
         <ul>
-            <li>✅ Complete {style_name} CSS</li>
-            <li>✅ JavaScript for interactions</li>
-            <li>✅ Icons (inline SVG)</li>
-            <li>✅ Form validation and styling</li>
-            <li>✅ No external CDN dependencies</li>
+            <li>Self-contained form HTML for style <code>{selected_style}</code></li>
+            <li>JavaScript for interactions</li>
+            <li>Form validation and styling</li>
+            <li>No external CDN dependencies</li>
         </ul>
         <p><strong>Template Usage:</strong> <code>&lt;div&gt;{{{{ form_html | safe }}}}&lt;/div&gt;</code></p>
+    </div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <h3>Raw HTML Source:</h3>
+        <p>This is the complete HTML generated by <code>{renderer_name}</code>:</p>
+        <details style="margin-top: 15px;">
+            <summary style="cursor: pointer; font-weight: bold; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                Click to view raw HTML source
+            </summary>
+            <pre style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 10px; white-space: pre-wrap; word-wrap: break-word;"><code>{escaped_form_html}</code></pre>
+        </details>
     </div>
 
     <div style="text-align: center; margin-top: 30px;">
@@ -2360,406 +328,1567 @@ async def self_contained(style: str = "material", demo: bool = True, debug: bool
 </body>
 </html>"""
 
-    return _build_self_contained_page(style=style, demo=demo, debug=debug)
+
+# ================================
+# HOME PAGE - ALL EXAMPLES
+# ================================
 
 
-@app.get("/self-contained/source", response_class=PlainTextResponse, tags=["Examples"])
-async def self_contained_source(style: str = "material", demo: bool = True, debug: bool = True):
-    """Return the self-contained HTML page as plain text (easy to copy/paste)."""
-    # Reuse the same HTML that /self-contained returns, but return it as text.
-    page_html = await self_contained(style=style, demo=demo, debug=debug)
-    return PlainTextResponse(page_html)
+@app.get('/', response_class=HTMLResponse, tags=['System'])
+async def home(request: Request):
+    """Home page showcasing all form examples."""
+    return templates.TemplateResponse(
+        request,
+        'home.html',
+        {
+            'request': request,
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI',
+            'framework_type': 'async',
+        },
+    )
 
 
-@app.post("/self-contained", response_class=HTMLResponse, tags=["Examples"])
-async def self_contained_post(request: Request, style: str = "material", debug: bool = False):
-    """Handle self-contained form submission."""
-    style = (style or "").strip().lower()
-    if style not in {"bootstrap", "material"}:
-        raise HTTPException(status_code=400, detail="style must be 'bootstrap' or 'material'")
+# ================================
+# SIMPLE FORM - LOGIN
+# ================================
 
+
+@app.get('/login', response_class=HTMLResponse, tags=['Simple Forms'])
+async def login_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Simple form example - Login form (GET)."""
+    csrf_token = issue_login_csrf_token(request)
+
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo or not data:
+        # Add demo data for easier testing
+        form_data = {'username': 'demo_user', 'password': 'demo_pass', 'remember_me': True}
+
+    form_html = await render_form_html_async(
+        MinimalLoginForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/login?style={style}',
+        csrf_mode='required-provider',
+        csrf_token_provider=csrf_token,
+        csrf_field_name='csrf_token',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=False,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Login - Simple Form',
+            'description': 'Demonstrates basic form fields, validation, and CSRF protection',
+            'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/login', response_class=HTMLResponse, tags=['Simple Forms'])
+async def login_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """Simple form example - Login form submission (async)."""
+    # Get form data asynchronously
     form_data = await request.form()
     form_dict = dict(form_data)
 
-    result = handle_form_submission(UserRegistrationForm, form_dict)
-    full_referer_path = get_referer_path(request)
+    submitted_csrf_token = form_dict.pop('csrf_token', None)
+    csrf_error = 'CSRF verification failed. Refresh the page and submit again.'
+    if not verify_login_csrf_token(request, submitted_csrf_token):
+        csrf_token = issue_login_csrf_token(request)
+        parsed_data = parse_nested_form_data(form_dict)
 
-    if result["success"]:
+        form_html = await render_form_html_async(
+            MinimalLoginForm,
+            framework=style,
+            form_data=parsed_data,
+            errors={'form': csrf_error},
+            submit_url=f'/login?style={style}',
+            csrf_mode='required-provider',
+            csrf_token_provider=csrf_token,
+            csrf_field_name='csrf_token',
+            debug=debug,
+            show_timing=show_timing,
+            enable_logging=True,
+        )
+
         return templates.TemplateResponse(
             request,
-            "success.html",
+            'form.html',
             {
-                "request": request,
-                "title": "Registration Successful",
-                "message": f"Welcome {result['data']['username']}! Your self-contained form submission was successful.",
-                "data": result["data"],
-                "framework": "fastapi",
-                "framework_name": "FastAPI (Async)",
-                "try_again_url": full_referer_path,
+                'request': request,
+                'title': 'Login - Simple Form',
+                'description': 'Demonstrates basic form fields, validation, and CSRF protection',
+                'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': {'form': csrf_error},
+            },
+            status_code=403,
+        )
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = MinimalLoginForm.validate(
+        parsed_data,
+        submit_url=f'/login?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        csrf_mode='required-provider',
+        csrf_field_name='csrf_token',
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        request.session.pop(LOGIN_CSRF_SESSION_KEY, None)
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Login Successful',
+                'message': f'Welcome {validation.data["username"]}!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
             },
         )
     else:
-        # Re-render as a self-contained page including the validation errors.
-        # Note: demo=False because user supplied real values.
-        return await self_contained(style=style, demo=False, debug=debug)
+        csrf_token = issue_login_csrf_token(request)
+        form_html = await validation.render_with_errors_async(
+            csrf_token_provider=csrf_token,
+            enable_logging=True,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'Login - Simple Form',
+                'description': 'Demonstrates basic form fields, validation, and CSRF protection',
+                'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
 
 
-# =========================================================================
+# ================================
+# MEDIUM FORM - USER REGISTRATION
+# ================================
+
+
+@app.get('/register', response_class=HTMLResponse, tags=['Registration'])
+async def register_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Medium complexity form - User registration (GET)."""
+    csrf_token = issue_register_csrf_token(request)
+
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo or not data:
+        # Add demo data for easier testing
+        form_data = {
+            'username': 'alex_johnson',
+            'email': 'alex.johnson@example.com',
+            'password': 'SecurePass123!',
+            'confirm_password': 'SecurePass123!',
+            'age': 28,
+            'role': 'user',
+        }
+
+    form_html = await render_form_html_async(
+        UserRegistrationForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/register?style={style}',
+        csrf_mode='required-provider',
+        csrf_token_provider=csrf_token,
+        csrf_field_name='csrf_token',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'User Registration - Medium Form',
+            'description': 'Demonstrates multiple field types, icons, validation, and CSRF protection',
+            'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+# Alias for /user route (used in templates)
+@app.get('/user', response_class=HTMLResponse, include_in_schema=False)
+async def user_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Alias for user registration form."""
+    return await register_get(request, style, data, demo, debug, show_timing)
+
+
+@app.post('/register', response_class=HTMLResponse, tags=['Registration'])
+async def register_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """Medium complexity form - User registration submission (async)."""
+    # Get form data asynchronously
+    form_data = await request.form()
+    form_dict = dict(form_data)
+
+    submitted_csrf_token = form_dict.pop('csrf_token', None)
+    csrf_error = 'CSRF verification failed. Refresh the page and submit again.'
+    if not verify_register_csrf_token(request, submitted_csrf_token):
+        csrf_token = issue_register_csrf_token(request)
+        parsed_data = parse_nested_form_data(form_dict)
+
+        form_html = await render_form_html_async(
+            UserRegistrationForm,
+            framework=style,
+            form_data=parsed_data,
+            errors={'form': csrf_error},
+            submit_url=f'/register?style={style}',
+            csrf_mode='required-provider',
+            csrf_token_provider=csrf_token,
+            csrf_field_name='csrf_token',
+            debug=debug,
+            show_timing=show_timing,
+            enable_logging=True,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'User Registration - Medium Form',
+                'description': 'Demonstrates multiple field types, icons, validation, and CSRF protection',
+                'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': {'form': csrf_error},
+            },
+            status_code=403,
+        )
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = UserRegistrationForm.validate(
+        parsed_data,
+        submit_url=f'/register?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        csrf_mode='required-provider',
+        csrf_field_name='csrf_token',
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        request.session.pop(REGISTER_CSRF_SESSION_KEY, None)
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Registration Successful',
+                'message': f'Welcome {validation.data["username"]}! Your account has been created.',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+    else:
+        csrf_token = issue_register_csrf_token(request)
+        form_html = await validation.render_with_errors_async(
+            csrf_token_provider=csrf_token,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'User Registration - Medium Form',
+                'description': 'Demonstrates multiple field types, icons, validation, and CSRF protection',
+                'security_highlight': 'CSRF demo enabled: token is issued on GET and verified before validation on POST.',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
+
+
+# ================================
+# COMPLEX FORM - COMPLETE SHOWCASE
+# ================================
+
+
+@app.get('/showcase', response_class=HTMLResponse, tags=['Showcase'])
+async def showcase_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Complex form example - All features and field types (GET)."""
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo:
+        # Add comprehensive demo data for all showcase features
+        form_data = {
+            'first_name': 'Demo',
+            'last_name': 'Showcase User',
+            'email': 'showcase@example.com',
+            'bio': 'This is a demo biography showcasing the textarea field with rich content. It demonstrates how longer text content appears in the form.',
+            'age': 32,
+            'birth_date': '1991-08-15',
+            'phone': '+1 (555) 123-4567',
+            'country': 'US',
+            'favorite_color': '#3498db',
+            'experience_level': 'advanced',
+            'newsletter_subscription': True,
+            'newsletter': True,
+        }
+
+    form_html = await render_form_html_async(
+        CompleteShowcaseForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/showcase?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Complete Showcase - Complex Form',
+            'description': 'Demonstrates ALL library features: model lists, sections, all input types',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/showcase', response_class=HTMLResponse, tags=['Showcase'])
+async def showcase_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """Complex form example - All features submission (async)."""
+    # Get form data asynchronously
+    form_data = await request.form()
+    form_dict = dict(form_data)
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = CompleteShowcaseForm.validate(
+        parsed_data,
+        submit_url=f'/showcase?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Showcase Form Submitted Successfully',
+                'message': 'All form data processed successfully!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+    else:
+        form_html = await validation.render_with_errors_async()
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'Complete Showcase - Complex Form',
+                'description': 'Demonstrates ALL library features: model lists, sections, all input types',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
+
+
+# ================================
+# SPECIAL DEMOS
+# ================================
+
+
+# Alias routes for template compatibility
+@app.get('/pets', response_class=HTMLResponse, tags=['Dynamic Lists'])
+async def pets_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Pet registration form - demonstrates dynamic lists and complex models."""
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo:
+        # Add demo data for pet registration
+        form_data = {
+            'owner_name': 'Sarah Thompson',
+            'email': 'sarah.thompson@email.com',
+            'address': '5 Marine Parade, ',
+            'emergency_contact': 'Mike Thompson - (555) 123-4567',
+            'pets': [
+                {
+                    'name': 'Tweety',
+                    'species': 'bird',
+                    'breed': 'Canary',
+                    'age': 2,
+                    'weight': 0.02,
+                    'microchipped': False,
+                    'last_vet_visit': '2024-11-01',
+                    'special_needs': 'Requires daily singing practice and fresh seed mix',
+                },
+                {
+                    'name': 'Buddy',
+                    'species': 'dog',
+                    'breed': 'Golden Retriever',
+                    'age': 3,
+                    'weight': 65.5,
+                    'microchipped': True,
+                    'last_vet_visit': '2024-10-15',
+                    'special_needs': 'Needs daily medication for hip dysplasia',
+                },
+                {
+                    'name': 'Whiskers',
+                    'species': 'cat',
+                    'breed': 'Maine Coon',
+                    'age': 5,
+                    'weight': 12.3,
+                    'microchipped': True,
+                    'last_vet_visit': '2024-09-20',
+                    'special_needs': 'Indoor only, sensitive to loud noises',
+                },
+                {
+                    'name': 'Nemo',
+                    'species': 'fish',
+                    'breed': 'Clownfish',
+                    'age': 1,
+                    'weight': 0.1,
+                    'microchipped': False,
+                    'last_vet_visit': '2024-08-12',
+                    'special_needs': 'Saltwater aquarium with anemone, pH monitoring',
+                },
+                {
+                    'name': 'Bunny',
+                    'species': 'rabbit',
+                    'breed': 'Holland Lop',
+                    'age': 4,
+                    'weight': 3.2,
+                    'microchipped': True,
+                    'last_vet_visit': '2024-09-05',
+                    'special_needs': 'High-fiber diet, daily exercise in secure area',
+                },
+                {
+                    'name': 'Peanut',
+                    'species': 'hamster',
+                    'breed': 'Syrian Hamster',
+                    'age': 1,
+                    'weight': 0.12,
+                    'microchipped': False,
+                    'last_vet_visit': '2024-07-22',
+                    'special_needs': 'Nocturnal, needs quiet during day, wheel for exercise',
+                },
+                {
+                    'name': 'Scales',
+                    'species': 'reptile',
+                    'breed': 'Bearded Dragon',
+                    'age': 6,
+                    'weight': 0.4,
+                    'microchipped': False,
+                    'last_vet_visit': '2024-10-30',
+                    'special_needs': 'UV lighting, temperature gradient 75-105°F, live insects',
+                },
+                {
+                    'name': 'Chester',
+                    'species': 'other',
+                    'breed': 'Chinchilla',
+                    'age': 3,
+                    'weight': 0.6,
+                    'microchipped': False,
+                    'last_vet_visit': '2024-09-18',
+                    'special_needs': 'Dust baths only, no water baths, cool temperature',
+                },
+                {
+                    'name': 'Coco',
+                    'species': 'bird',
+                    'breed': 'African Grey Parrot',
+                    'age': 12,
+                    'weight': 0.45,
+                    'microchipped': True,
+                    'is_vaccinated': True,
+                    'last_vet_visit': '2024-11-10',
+                    'special_needs': 'Highly intelligent, requires 4+ hours of interaction daily',
+                },
+                {
+                    'name': 'Gizmo',
+                    'species': 'other',
+                    'breed': 'Ferret',
+                    'age': 2,
+                    'weight': 0.8,
+                    'microchipped': True,
+                    'is_vaccinated': True,
+                    'last_vet_visit': '2024-10-22',
+                    'special_needs': 'Annual distemper and rabies vaccines required; needs ferret-proofed play area',
+                },
+            ],
+        }
+
+    form_html = await render_form_html_async(
+        PetRegistrationForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/pets?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Pet Registration - Dynamic Lists',
+            'description': 'Demonstrates pet registration with dynamic lists and owner information',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/pets', response_class=HTMLResponse, tags=['Dynamic Lists'])
+async def pets_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """Pet registration form submission."""
+    # Get form data asynchronously
+    form_data = await request.form()
+    form_dict = dict(form_data)
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = PetRegistrationForm.validate(
+        parsed_data,
+        submit_url=f'/pets?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Pet Registration Successful',
+                'message': f'Successfully registered pets for {validation.data["owner_name"]}!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+    else:
+        form_html = await validation.render_with_errors_async()
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'Pet Registration - Dynamic Lists',
+                'description': 'Demonstrates pet registration with dynamic lists and owner information',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
+
+
+# All framework-specific endpoints removed in favor of cleaner style parameter approach
+# Use: /pets?style=bootstrap, /login?style=material, etc.
+
+# ================================
+# STRESS TEST - DEEPLY NESTED FORMS
+# ================================
+
+
+@app.get('/organization', response_class=HTMLResponse, tags=['Advanced Nested'])
+async def organization_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = True,
+    show_timing: bool = True,
+):
+    """
+    Comprehensive Tabbed Interface with 6 tabs!
+
+    Demonstrates the library's ability to handle:
+    1. Organization Tab - 5 levels deep nested structure
+    2. Kitchen Sink Tab - ALL input types in one place
+    3. Contact Management Tab - Advanced contact forms
+    4. Scheduling Tab - Date/time management with events
+    5. Media & Files Tab - Color themes and preferences
+    6. Settings Tab - Application settings and notifications
+
+        Educational note:
+        - This route intentionally uses the original `nested_forms_example` module,
+            so users can explore the full end-to-end stress-test form.
+        - A reusable organization-only variant is exposed at
+            `/organization-shared` using models from `shared_models.py`.
+    """
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo:
+        # Use comprehensive sample data for all tabs
+        form_data = create_comprehensive_sample_data()
+
+    # Import locally to keep this route explicitly tied to the full nested demo.
+    # This makes it clear which module provides the comprehensive tabbed layout.
+    from .nested_forms_models import ComprehensiveTabbedForm
+
+    form_html = await render_form_html_async(
+        ComprehensiveTabbedForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/organization?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Comprehensive Tabbed Interface - 6 Tabs! 🚀',
+            'description': 'Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/organization', response_class=HTMLResponse, tags=['Advanced Nested'])
+async def organization_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """
+    Handle submission for the full 6-tab comprehensive nested example.
+
+    The submission path demonstrates how raw HTML form payloads are validated
+    against the tabbed root model and then rendered in success/error templates.
+    """
+    # Get form data asynchronously
+    form_data = await request.form()
+    form_dict = dict(form_data)
+
+    from .nested_forms_models import ComprehensiveTabbedForm
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = ComprehensiveTabbedForm.validate(
+        parsed_data,
+        submit_url=f'/organization?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    full_referer_path = create_refer_path(request)
+
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Comprehensive Form Submitted Successfully! 🎉',
+                'message': 'All 6 tabs of data have been successfully processed!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+    else:
+        form_html = await validation.render_with_errors_async()
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'Comprehensive Tabbed Interface - 6 Tabs! 🚀',
+                'description': 'Ultimate showcase: Organization (5 levels deep) + Kitchen Sink (ALL inputs) + Contacts + Scheduling + Media + Settings',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
+
+
+@app.get('/organization-shared', response_class=HTMLResponse, tags=['Advanced Nested'])
+async def organization_shared_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = True,
+    show_timing: bool = True,
+):
+    """
+    Organization-only demo reusing shared models.
+
+    This route is the reusable counterpart to `/organization` and shows how to
+    render a deeply nested form directly from models in `shared_models.py`.
+    """
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass
+    elif demo:
+        # Seed with realistic nested data so users can inspect structure quickly.
+        form_data = create_sample_nested_data()
+
+    form_html = await render_form_html_async(
+        CompanyOrganizationForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/organization-shared?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Organization (Shared Models) - 5 Levels Deep 🏢',
+            'description': 'Reusable organization-only example powered by models in shared_models.py.',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/organization-shared', response_class=HTMLResponse, tags=['Advanced Nested'])
+async def organization_shared_post(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """
+    Handle organization-only shared form submission.
+
+    Uses the shared `CompanyOrganizationForm` to demonstrate that the same
+    model can power multiple framework routes and API endpoints.
+    """
+    form_data = await request.form()
+    form_dict = dict(form_data)
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = CompanyOrganizationForm.validate(
+        parsed_data,
+        submit_url=f'/organization-shared?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    full_referer_path = create_refer_path(request)
+
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Organization Shared Form Submitted Successfully! 🎉',
+                'message': 'Organization hierarchy data has been successfully processed!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+
+    form_html = await validation.render_with_errors_async()
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Organization (Shared Models) - 5 Levels Deep 🏢',
+            'description': 'Reusable organization-only example powered by models in shared_models.py.',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+            'errors': validation.errors,
+        },
+    )
+
+
+@app.get('/layouts', response_class=HTMLResponse, tags=['Showcase'])
+async def layouts_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Comprehensive layout demonstration - single form showcasing all layout types."""
+    # Parse optional pre-fill data or use demo data
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo or not data:
+        # Add demo data for easier testing of all layout types
+        form_data = {
+            'vertical_tab': {
+                'first_name': 'Alex',
+                'last_name': 'Johnson',
+                'email': 'alex.johnson@example.com',
+                'birth_date': '1990-05-15',
+            },
+            'horizontal_tab': {
+                'phone': '+1 (555) 987-6543',
+                'address': '456 Demo Street',
+                'city': 'San Francisco',
+                'postal_code': '94102',
+            },
+            'tabbed_tab': {
+                'notification_email': True,
+                'notification_sms': False,
+                'theme': 'dark',
+                'language': 'en',
+            },
+            'list_tab': {
+                'project_name': 'Demo Project',
+                'tasks': [
+                    {
+                        'task_name': 'Complete project setup',
+                        'priority': 'high',
+                        'due_date': '2024-12-01',
+                    },
+                    {
+                        'task_name': 'Write documentation',
+                        'priority': 'medium',
+                        'due_date': '2024-12-15',
+                    },
+                ],
+            },
+        }
+
+    from pydantic_schemaforms.html_markers import wrap_with_schemaforms_markers
+
+    renderer = EnhancedFormRenderer(framework=style)
+    form_html = await renderer.render_form_from_model_async(
+        LayoutDemonstrationForm,
+        data=form_data,
+        errors={},
+        submit_url=f'/layouts?style={style}',
+        include_submit_button=True,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    form_html = wrap_with_schemaforms_markers(form_html)
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Layout Demonstration - All Types',
+            'description': 'Single form showcasing Vertical, Horizontal, Tabbed, and List layouts',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@app.post('/layouts', response_class=HTMLResponse, tags=['Showcase'])
+async def layouts_post(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Handle comprehensive layout demonstration form submission."""
+    form_data = await request.form()
+    form_dict = dict(form_data)
+    full_referer_path = create_refer_path(request)
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = LayoutDemonstrationForm.validate(parsed_data)
+
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Layout Demo Submitted Successfully',
+                'message': 'All layout types processed successfully!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+
+    # Re-render the form with validation errors + user data.
+    from pydantic_schemaforms.html_markers import wrap_with_schemaforms_markers
+
+    renderer = EnhancedFormRenderer(framework=style)
+    form_html = await renderer.render_form_from_model_async(
+        LayoutDemonstrationForm,
+        data=parsed_data,
+        errors=validation.errors,
+        submit_url=f'/layouts?style={style}',
+        include_submit_button=True,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    form_html = wrap_with_schemaforms_markers(form_html)
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Layout Demonstration - Validation Errors',
+            'description': 'Please fix the highlighted fields',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+            'errors': validation.errors,
+        },
+    )
+
+
+@app.get('/self-contained', response_class=HTMLResponse, tags=['Self-Contained'])
+async def self_contained(
+    style: str = 'material',
+    demo: bool = True,
+    debug: bool = True,
+    show_timing: bool = True,
+):
+    """
+    Self-contained form demo with zero external dependencies.
+
+    Important behavior for this example:
+    - Uses the core renderer with `self_contained=True`.
+    - Posts back to `/self-contained` so submissions work without extra routes.
+    - Honors `style` for `bootstrap`, `material`, and `none` (plain HTML).
+    """
+    from pydantic_schemaforms.html_markers import wrap_with_schemaforms_markers
+
+    selected_style = (style or 'material').lower()
+    if selected_style not in {'bootstrap', 'material', 'none'}:
+        selected_style = 'material'
+
+    # Add demo data if requested
+    form_data = {}
+    if demo:
+        form_data = {
+            'username': 'self_contained_user',
+            'email': 'selfcontained@example.com',
+            'password': 'DemoPass123!',
+            'confirm_password': 'DemoPass123!',
+            'full_name': 'Self Contained Demo',
+            'age': 25,
+            'agree_terms': True,
+            'newsletter': False,
+        }
+
+    form_html = await render_form_html_async(
+        UserRegistrationForm,
+        framework=selected_style,
+        form_data=form_data,
+        submit_url=f'/self-contained?style={selected_style}&demo=false&debug={str(debug).lower()}&show_timing={str(show_timing).lower()}',
+        self_contained=True,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    form_html = wrap_with_schemaforms_markers(form_html)
+    renderer_name = 'EnhancedFormRenderer'
+    return render_self_contained_demo_page(selected_style, form_html, renderer_name)
+
+
+@app.post('/self-contained', response_class=HTMLResponse, tags=['Self-Contained'])
+async def self_contained_post(
+    request: Request,
+    style: str = 'material',
+    debug: bool = True,
+    show_timing: bool = True,
+):
+    """
+    Handle self-contained form submission.
+
+    This mirrors the GET demo while ensuring form posts are validated against
+    `UserRegistrationForm` and errors are rendered back into the same
+    self-contained HTML output.
+    """
+    from pydantic_schemaforms.html_markers import wrap_with_schemaforms_markers
+
+    selected_style = (style or 'material').lower()
+    if selected_style not in {'bootstrap', 'material', 'none'}:
+        selected_style = 'material'
+
+    form_data = await request.form()
+    form_dict = dict(form_data)
+    parsed_data = parse_nested_form_data(form_dict)
+    _submit_url = f'/self-contained?style={selected_style}&demo=false&debug={str(debug).lower()}&show_timing={str(show_timing).lower()}'
+    validation = UserRegistrationForm.validate(
+        parsed_data,
+        submit_url=_submit_url,
+        framework=selected_style,
+        self_contained=True,
+        debug=debug,
+        show_timing=show_timing,
+    )
+
+    if validation.is_valid:
+        full_referer_path = create_refer_path(request)
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Self-Contained Form Submitted Successfully',
+                'message': 'Self-contained registration data processed successfully!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+
+    form_html = await validation.render_with_errors_async()
+    form_html = wrap_with_schemaforms_markers(form_html)
+    renderer_name = 'EnhancedFormRenderer'
+    return render_self_contained_demo_page(selected_style, form_html, renderer_name)
+
+
+# ================================
 # API ENDPOINTS (JSON RESPONSES)
-# =========================================================================
+# ================================
+
+# Central registry used by API endpoints below.
+#
+# Why keep this in one place?
+# - It makes it easy for readers to add a new form example in one edit.
+# - It guarantees schema/render/submit endpoints all expose the same form set.
+# - It demonstrates a clean API-first pattern for SchemaForms integrations.
+FORM_REGISTRY = {
+    'login': MinimalLoginForm,
+    'register': UserRegistrationForm,
+    'pets': PetRegistrationForm,
+    'showcase': CompleteShowcaseForm,
+    'layouts': LayoutDemonstrationForm,
+    'organization': CompanyOrganizationForm,
+    'organization-shared': CompanyOrganizationForm,
+}
 
 
-@app.get("/api/forms/{form_type}/schema", tags=["Examples"])
+@app.get('/api/forms/{form_type}/schema', tags=['Generic Form API'])
 async def api_form_schema(form_type: str):
-    """API endpoint to get a form schema as JSON."""
-    mapping = _form_mapping()
-    if form_type not in mapping:
-        raise HTTPException(status_code=404, detail="Form type not found")
+    """
+    Return JSON Schema for a form model.
 
-    form_class = mapping[form_type]
+    This endpoint helps users understand how SchemaForms derives field
+    definitions directly from Pydantic models.
+    """
+
+    if form_type not in FORM_REGISTRY:
+        raise HTTPException(status_code=404, detail='Form type not found')
+
+    form_class = FORM_REGISTRY[form_type]
     schema = form_class.model_json_schema()
 
-    return {
-        "form_type": form_type,
-        "schema": schema,
-        "framework": "fastapi",
-    }
+    return {'form_type': form_type, 'schema': schema, 'framework': 'fastapi'}
 
 
-@app.post("/api/forms/{form_type}/submit", tags=["Examples"])
+@app.post('/api/forms/{form_type}/submit', tags=['Generic Form API'])
 async def api_submit_form(form_type: str, request: Request):
-    """API endpoint for JSON form submissions."""
-    mapping = _form_mapping()
-    if form_type not in mapping:
-        raise HTTPException(status_code=404, detail="Form type not found")
+    """
+    Validate JSON form submissions against a selected Pydantic form model.
 
-    form_class = mapping[form_type]
+    This shows the API workflow behind the HTML examples:
+    request payload -> model validation -> normalized data/errors response.
+    """
+
+    if form_type not in FORM_REGISTRY:
+        raise HTTPException(status_code=404, detail='Form type not found')
+
+    form_class = FORM_REGISTRY[form_type]
+
     json_data = await request.json()
-    result = handle_form_submission(form_class, json_data)
 
-    success = bool(result.get("success"))
+    validation = form_class.validate(json_data)
+
     return {
-        "success": success,
-        "data": result.get("data") if success else None,
-        "errors": result.get("errors") or {},
-        "framework": "fastapi",
+        'success': validation.is_valid,
+        'data': validation.data if validation.is_valid else None,
+        'errors': validation.errors,
+        'framework': 'fastapi',
     }
 
 
-@app.get("/api/forms/{form_type}/render", tags=["Examples"])
+@app.get('/api/forms/{form_type}/render', tags=['Generic Form API'])
 async def api_render_form(
-    form_type: str,
-    style: str = "bootstrap",
-    debug: bool = False,
-    include_assets: bool = True,
-    asset_mode: str = "vendored",
+    form_type: str, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
 ):
-    """API endpoint to render form HTML."""
-    mapping = _form_mapping()
-    if form_type not in mapping:
-        raise HTTPException(status_code=404, detail="Form type not found")
+    """
+    Render a form model as HTML and return the markup in JSON.
 
-    style = (style or "").strip().lower()
-    if style not in {"bootstrap", "material", "none"}:
-        raise HTTPException(
-            status_code=400, detail="style must be 'bootstrap', 'material', or 'none'"
-        )
+    Useful for embedding forms in non-templated clients or testing renderer
+    output through API calls.
+    """
 
-    form_class = mapping[form_type]
-    html = render_form_html(
+    if form_type not in FORM_REGISTRY:
+        raise HTTPException(status_code=404, detail='Form type not found')
+
+    form_class = FORM_REGISTRY[form_type]
+    form_html = await render_form_html_async(
         form_class,
         framework=style,
-        submit_url=f"/api/forms/{form_type}/submit",
+        submit_url=f'/api/forms/{form_type}/submit',
         debug=debug,
-        include_framework_assets=include_assets,
-        asset_mode=_normalize_asset_mode(asset_mode),
+        show_timing=show_timing,
+        enable_logging=True,
     )
 
-    return {
-        "form_type": form_type,
-        "style": style,
-        "html": html,
-        "framework": "fastapi",
-    }
+    return {'form_type': form_type, 'style': style, 'html': form_html, 'framework': 'fastapi'}
 
 
-@app.get("/api/health", tags=["Health"])
+# ================================
+# DUAL-USE: FORM + JSON API
+# ================================
+# One FormModel class serves both a browser form and a typed JSON endpoint.
+# ContactForm renders to HTML; ContactSchema (= ContactForm.as_api_model())
+# is the clean Pydantic model used by the JSON endpoint — ui_* keys stripped,
+# all validation constraints and Field(examples=[...]) preserved.
+
+
+@app.get('/contact', response_class=HTMLResponse, tags=['Dual-Use: Form + JSON API'])
+async def contact_get(
+    request: Request,
+    style: str = 'bootstrap',
+    demo: bool = False,
+    debug: bool = False,
+    show_timing: bool = False,
+):
+    """Render the contact form (HTML)."""
+    form_data = (
+        {
+            'name': 'Alice Example',
+            'email': 'alice@example.com',
+            'message': 'Hello! I have a question about your library.',
+        }
+        if demo
+        else {}
+    )
+    form_html = await ContactForm.render_form_async(
+        submit_url=f'/contact?style={style}',
+        framework=style,
+        data=form_data,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'title': 'Contact — HTML Form',
+            'form_html': form_html,
+            'refer_path': '/contact',
+            'api_endpoint': '/api/contact',
+            'api_schema_endpoint': '/api/contact/schema',
+        },
+    )
+
+
+@app.post('/contact', response_class=HTMLResponse, tags=['Dual-Use: Form + JSON API'])
+async def contact_post(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = False,
+):
+    """Accept and validate a browser form submission (multipart/form-data)."""
+    raw = await request.form()
+    data = parse_nested_form_data(raw)
+    result = ContactForm.validate(data, submit_url=f'/contact?style={style}', framework=style)
+    if result.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'title': 'Message Sent!',
+                'message': f'Thank you, {result.data.get("name", "")}! Your message was received.',
+                'data': result.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': f'/contact?style={style}&demo=true&debug={debug}&show_timing={show_timing}',
+            },
+        )
+    form_html = await result.render_with_errors_async(debug=debug, show_timing=show_timing)
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'title': 'Contact — HTML Form',
+            'form_html': form_html,
+            'refer_path': '/contact',
+            'api_endpoint': '/api/contact',
+            'api_schema_endpoint': '/api/contact/schema',
+        },
+    )
+
+
+@app.post('/api/contact', response_model=ContactSchema, tags=['Dual-Use: Form + JSON API'])
+async def api_contact(data: ContactSchema):
+    """
+    Accept a JSON body validated against the same model as the HTML form.
+
+    FastAPI uses ContactSchema (ContactForm.as_api_model()) so the OpenAPI
+    docs show a clean schema with no ui_* keys — identical to a hand-written
+    Pydantic model, with Field examples and validation constraints intact.
+
+    Try it:
+        curl -X POST http://localhost:8000/api/contact \\
+             -H 'Content-Type: application/json' \\
+             -d '{"name":"Alice","email":"alice@example.com","message":"Hello there!"}'
+    """
+    return data
+
+
+@app.get('/api/contact/schema', tags=['Dual-Use: Form + JSON API'])
+async def api_contact_schema():
+    """Return the clean JSON Schema used by the /api/contact endpoint."""
+    return ContactSchema.model_json_schema()
+
+
+# ================================
+# FEEDBACK — second dual-use demo
+# ================================
+
+
+@app.get('/feedback', response_class=HTMLResponse, tags=['Dual-Use: Form + JSON API'])
+async def feedback_get(
+    request: Request,
+    style: str = 'bootstrap',
+    demo: bool = False,
+    debug: bool = False,
+    show_timing: bool = False,
+):
+    """Render the feedback form (HTML)."""
+    form_data = (
+        {
+            'subject': 'Documentation',
+            'rating': 4,
+            'comment': 'Very clear examples — the dual-use pattern is especially handy!',
+        }
+        if demo
+        else {}
+    )
+    form_html = await FeedbackForm.render_form_async(
+        submit_url=f'/feedback?style={style}',
+        framework=style,
+        data=form_data,
+        debug=debug,
+        show_timing=show_timing,
+    )
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'title': 'Feedback — HTML Form',
+            'form_html': form_html,
+            'refer_path': '/feedback',
+            'api_endpoint': '/api/feedback',
+            'api_schema_endpoint': '/api/feedback/schema',
+        },
+    )
+
+
+@app.post('/feedback', response_class=HTMLResponse, tags=['Dual-Use: Form + JSON API'])
+async def feedback_post(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = False,
+):
+    """Accept and validate a browser feedback submission."""
+    raw = await request.form()
+    data = parse_nested_form_data(raw)
+    result = FeedbackForm.validate(data, submit_url=f'/feedback?style={style}', framework=style)
+    if result.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'title': 'Feedback Received!',
+                'message': f'Thanks for the {result.data.get("rating", "")}-star feedback!',
+                'data': result.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': f'/feedback?style={style}&demo=true&debug={debug}&show_timing={show_timing}',
+            },
+        )
+    form_html = await result.render_with_errors_async(debug=debug, show_timing=show_timing)
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'title': 'Feedback — HTML Form',
+            'form_html': form_html,
+            'refer_path': '/feedback',
+            'api_endpoint': '/api/feedback',
+            'api_schema_endpoint': '/api/feedback/schema',
+        },
+    )
+
+
+@app.post('/api/feedback', response_model=FeedbackSchema, tags=['Dual-Use: Form + JSON API'])
+async def api_feedback(data: FeedbackSchema):
+    """
+    Accept a JSON body validated against the same model as the HTML feedback form.
+
+    FeedbackSchema is FeedbackForm.as_api_model(): integer rating with ge=1/le=5
+    constraints (minimum/maximum in JSON Schema) and no ui_* keys in OpenAPI.
+
+    Try it:
+        curl -X POST http://localhost:8000/api/feedback \\
+             -H 'Content-Type: application/json' \\
+             -d '{"subject":"Documentation","rating":5,"comment":"Very clear!"}'
+    """
+    return data
+
+
+@app.get('/api/feedback/schema', tags=['Dual-Use: Form + JSON API'])
+async def api_feedback_schema():
+    """Return the clean JSON Schema used by the /api/feedback endpoint."""
+    return FeedbackSchema.model_json_schema()
+
+
+# ================================
+# HEALTH CHECK
+# ================================
+
+
+@app.get('/api/health', tags=['System'])
 async def health_check():
     """Health check endpoint."""
-    return {
-        "status": "ok",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "version": pydantic_schemaforms.__version__,
-    }
+    return {'status': 'healthy', 'framework': 'fastapi', 'version': _psf_version}
 
 
-# =========================================================================
-# ANALYTICS DASHBOARD
-# =========================================================================
+def create_refer_path(request: Request) -> str:
+    """Helper function to create referer path with query parameters."""
+    referer = request.headers.get('referer', '')
+    if referer:
+        from urllib.parse import urlparse
+
+        parsed_referer = urlparse(referer)
+        referer_path = parsed_referer.path
+        referer_query = parsed_referer.query
+        full_referer_path = f'{referer_path}?{referer_query}' if referer_query else referer_path
+        return full_referer_path
+    return '/'
 
 
-@app.get("/api/analytics/summary", tags=["Analytics"], include_in_schema=False)
-async def api_analytics_summary(request: Request, days: int = 1, top_n: int = 10):
-    _require_dashboard_auth(request)
-    summary = get_summary(days=days, top_n=top_n)
-    return {
-        "since": summary.since_iso,
-        "total_requests": summary.total_requests,
-        "unique_ips": summary.unique_ips,
-        "avg_duration_ms": summary.avg_duration_ms,
-        "top_paths": summary.top_paths,
-        "status_counts": summary.status_counts,
-        "browser_counts": summary.browser_counts,
-    }
+# ================================
+# RUN APPLICATION
+# ================================
 
-
-@app.get("/api/analytics/requests", tags=["Analytics"], include_in_schema=False)
-async def api_analytics_requests(request: Request, limit: int = 200):
-    _require_dashboard_auth(request)
-    return {"requests": get_recent_requests(limit=min(max(limit, 1), 1000))}
-
-
-@app.get("/api/analytics/errors", tags=["Analytics"], include_in_schema=False)
-async def api_analytics_errors(request: Request, limit: int = 200):
-    _require_dashboard_auth(request)
-    return {"errors": get_recent_errors(limit=min(max(limit, 1), 1000))}
-
-
-@app.get("/api/analytics/ip-geo", tags=["Analytics"], include_in_schema=False)
-async def api_analytics_ip_geo(request: Request):
-    _require_dashboard_auth(request)
-    return {"ip_geo": get_ip_geo_queue_status()}
-
-
-@app.post("/api/analytics/purge", tags=["Analytics"], include_in_schema=False)
-async def api_analytics_purge(request: Request):
-    _require_dashboard_auth(request)
-    purge_all()
-    return {"status": "ok"}
-
-
-@app.get("/central", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
-async def central_dashboard(request: Request):
-    # Same token-to-cookie flow as /dashboard.
-    required = _dashboard_token_required()
-    presented = _token_from_request(request)
-    if presented:
-        if presented != required:
-            raise HTTPException(status_code=401, detail="Dashboard token required")
-
-        params = dict(request.query_params)
-        params.pop("token", None)
-        query = "&".join(f"{k}={v}" for k, v in params.items() if v is not None and v != "")
-        url = "/central" + (f"?{query}" if query else "")
-
-        resp = RedirectResponse(url=url, status_code=303)
-        _maybe_set_dashboard_cookie_from_token(request, resp)
-        return resp
-
-    _require_dashboard_auth(request)
-
-    ip_geo = get_ip_geo_queue_status()
-    token_required = True
-    ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
-
-    def _env(name: str, default: str) -> str:
-        val = os.environ.get(name)
-        if val is None:
-            return default
-        return val
-
-    def _env_int(name: str, default: int) -> int:
-        try:
-            return int(os.environ.get(name) or default)
-        except Exception:
-            return default
-
-    health = {
-        "status": "ok",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "version": pydantic_schemaforms.__version__,
-    }
-
-    return templates.TemplateResponse(
-        request,
-        "central_dashboard.html",
-        {
-            "request": request,
-            "app_name": app.title,
-            "app_version": app.version,
-            "health": health,
-            "ip_geo": ip_geo,
-            "ip_geo_enabled": _env("IP_GEO_ENABLED", "0"),
-            "ip_geo_worker_enabled": _env("IP_GEO_WORKER_ENABLED", "0"),
-            "ip_geo_rate_limit_per_min": _env_int("IP_GEO_RATE_LIMIT_PER_MIN", 40),
-            "ip_geo_cache_ttl_days": _env_int("IP_GEO_CACHE_TTL_DAYS", 180),
-            "analytics_db_path": get_db_path(),
-            "token_required": token_required,
-            "ttl_min": ttl_min,
-        },
-    )
-
-
-@app.get("/dashboard", response_class=HTMLResponse, tags=["Analytics"], include_in_schema=False)
-async def dashboard(request: Request, days: int = 1, limit: int = 50):
-    # If a valid token is presented, set/refresh a 30-min cookie and redirect
-    # to a clean URL (so the token doesn't stay in the address bar).
-    required = _dashboard_token_required()
-    presented = _token_from_request(request)
-    if presented:
-        if presented != required:
-            raise HTTPException(status_code=401, detail="Dashboard token required")
-
-        params = dict(request.query_params)
-        params.pop("token", None)
-        query = "&".join(f"{k}={v}" for k, v in params.items() if v is not None and v != "")
-        url = "/dashboard" + (f"?{query}" if query else "")
-
-        resp = RedirectResponse(url=url, status_code=303)
-        _maybe_set_dashboard_cookie_from_token(request, resp)
-        return resp
-
-    _require_dashboard_auth(request)
-
-    summary = get_summary(days=days, top_n=10)
-    recent = get_recent_requests(limit=min(max(limit, 1), 500))
-
-    # Build per-row UUID lookups so HTMX details fetches don't expose raw IP query params.
-    for row in recent:
-        try:
-            payload = {
-                "ts": row.get("ts"),
-                "request_id": row.get("request_id"),
-                "path": row.get("path"),
-                "method": row.get("method"),
-                "status_code": row.get("status_code"),
-                "client_ip": row.get("client_ip"),
-                "location": row.get("location"),
-                "country": row.get("country"),
-                "country_code": row.get("country_code"),
-                "region": row.get("region"),
-                "city": row.get("city"),
-                "latitude": row.get("latitude"),
-                "longitude": row.get("longitude"),
-                "ip_geo_provider": row.get("ip_geo_provider"),
-                "ip_geo_fetched_at": row.get("ip_geo_fetched_at"),
-                "ip_geo_expires_at": row.get("ip_geo_expires_at"),
-                "ip_geo_raw_json": row.get("ip_geo_raw_json"),
-                "ip_geo_tooltip": row.get("ip_geo_tooltip"),
-            }
-            row["ip_lookup_id"] = _dashboard_ip_modal_store(request, payload)
-        except Exception:
-            row["ip_lookup_id"] = None
-
-    recent_errors = get_recent_errors(limit=50)
-    ip_geo = get_ip_geo_queue_status()
-
-    token_required = True
-    ttl_min = int(_dashboard_cookie_ttl_seconds() / 60)
-
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "request": request,
-            "summary": summary,
-            "recent": recent,
-            "recent_errors": recent_errors,
-            "ip_geo": ip_geo,
-            "token_required": token_required,
-            "ttl_min": ttl_min,
-        },
-    )
-
-
-@app.get(
-    "/dashboard/ip-modal/{lookup_id}",
-    response_class=HTMLResponse,
-    tags=["Analytics"],
-    include_in_schema=False,
-)
-async def dashboard_ip_modal(request: Request, lookup_id: str):
-    _require_dashboard_auth(request)
-
-    payload = _dashboard_ip_modal_lookup(request, lookup_id)
-    if not payload:
-        raise HTTPException(status_code=404, detail="IP detail lookup not found")
-
-    return templates.TemplateResponse(
-        request,
-        "ip_modal.html",
-        {
-            "request": request,
-            "row": payload,
-        },
-    )
-
-
-@app.get("/dashboard/logout", tags=["Analytics"], include_in_schema=False)
-async def dashboard_logout(request: Request):
-    resp = RedirectResponse(url="/", status_code=303)
-    resp.delete_cookie(key=_dashboard_cookie_name(), path="/")
-    return resp
-
-
-# ============================================================================
-# ERROR HANDLERS
-# ============================================================================
-
-
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc):
-    """Handle 404 errors."""
-    return templates.TemplateResponse(request, "404.html", {"request": request}, status_code=404)
-
-
-@app.exception_handler(500)
-async def server_error_handler(request: Request, exc):
-    """Handle 500 errors."""
-    return templates.TemplateResponse(
-        request, "500.html", {"request": request, "error": str(exc)}, status_code=500
-    )
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Capture unhandled exceptions for the dashboard."""
-    client_ip = extract_client_ip(dict(request.headers), getattr(request.client, "host", None))
-
-    logger.exception(
-        json.dumps(
-            {
-                "event": "unhandled_exception",
-                **_request_log_context(request),
-                "kind": exc.__class__.__name__,
-                "message": str(exc) or exc.__class__.__name__,
-            },
-            default=str,
-        )
-    )
-
-    record_error(
-        request_id=getattr(request.state, "request_id", None),
-        user_id=getattr(request.state, "user_id", None),
-        kind=exc.__class__.__name__,
-        message=str(exc) or exc.__class__.__name__,
-        detail=traceback.format_exc(),
-        path=request.url.path,
-        method=request.method,
-        status_code=500,
-        client_ip=client_ip,
-        user_agent=request.headers.get("user-agent"),
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "500.html",
-        {"request": request, "error": str(exc)},
-        status_code=500,
-    )
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    print('🚀 Starting FastAPI Example (Async)')
+    print('=' * 60)
+    print('📋 Available Examples:')
+    print('   • Simple:    http://localhost:8000/login')
+    print('   • Medium:    http://localhost:8000/register')
+    print('   • Complex:   http://localhost:8000/showcase')
+    print('   • Layouts:   http://localhost:8000/layouts')
+    print('   • 🚀 STRESS TEST (5 levels deep!): http://localhost:8000/organization')
+    print('   • 🏢 Reusable Organization:         http://localhost:8000/organization-shared')
+    print('')
+    print('🎨 Style Variants (add ?style= to any form):')
+    print('   • Bootstrap:       ?style=bootstrap')
+    print('   • Material Design: ?style=material')
+    print('   • Plain HTML:      ?style=none')
+    print('   • Debug Panel:     add ?debug=1')
+    print('   • Show Timing:     add ?show_timing=1')
+    print('')
+    print('🎯 Special Demos:')
+    print('   • Self-Contained: http://localhost:8000/self-contained')
+    print('   • API Docs:       http://localhost:8000/docs')
+    print('   • Home Page:      http://localhost:8000/')
+    print('')
+    print('🔗 Dual-Use Demos (form + JSON API from one FormModel):')
+    print('   Contact form (str fields):')
+    print('   • HTML Form:  http://localhost:8000/contact')
+    print('   • JSON API:   POST http://localhost:8000/api/contact')
+    print('   • API Schema: http://localhost:8000/api/contact/schema')
+    print('   Feedback form (int rating with ge/le constraints):')
+    print('   • HTML Form:  http://localhost:8000/feedback')
+    print('   • JSON API:   POST http://localhost:8000/api/feedback')
+    print('   • API Schema: http://localhost:8000/api/feedback/schema')
+    print('')
+    print('🔧 API Endpoints:')
+    print('   • Schema:              http://localhost:8000/api/forms/register/schema')
+    print('   • Pet Schema:          http://localhost:8000/api/forms/pets/schema')
+    print('   • Layout Schema:       http://localhost:8000/api/forms/layouts/schema')
+    print('   • Organization Schema: http://localhost:8000/api/forms/organization/schema')
+    print('   • Org Shared Schema:   http://localhost:8000/api/forms/organization-shared/schema')
+    print('   • Render:              http://localhost:8000/api/forms/register/render')
+    print('   • Pet Render:          http://localhost:8000/api/forms/pets/render')
+    print('   • Layout Render:       http://localhost:8000/api/forms/layouts/render')
+    print('   • Organization Render: http://localhost:8000/api/forms/organization/render')
+    print('   • Org Shared Render:   http://localhost:8000/api/forms/organization-shared/render')
+    print('   • Submit:              POST http://localhost:8000/api/forms/register/submit')
+    print('   • Health:              http://localhost:8000/api/health')
+    print('=' * 60)
+    print('💡 To run this example:')
+    print('   make ex-run')
+    print('   # OR')
+    print('   uvicorn fastapi_example:app --port 8000 --reload')
+    print('=' * 60)

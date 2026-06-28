@@ -2,6 +2,9 @@
 .bumpcalver/
 # bumpcalver-history.json
 
+# ignore copy from pydantic-schemaforms examples
+/lib-examples
+
 # SQLite
 *.db
 *.db-shm
