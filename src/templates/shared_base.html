@@ -96,6 +96,14 @@
             background: #eef2ff;
         }
 
+        .resource-link-static,
+        .resource-link-static:hover {
+            border-color: #dbe3ef;
+            color: #1f2937;
+            background: #fff;
+            cursor: default;
+        }
+
         @media (max-width: 576px) {
             .site-brand-logo {
                 display: none;
@@ -185,6 +193,12 @@
                 <i class="bi bi-book"></i>
                 Documentation
             </a>
+            {% if lib_version %}
+            <span class="resource-link resource-link-static" aria-label="Pydantic SchemaForms version">
+                <i class="bi bi-tag"></i>
+                pydantic-schemaforms v{{ lib_version }}
+            </span>
+            {% endif %}
         </div>
         {% endif %}
 

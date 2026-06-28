@@ -345,6 +345,7 @@ async def home(request: Request):
             'framework': 'fastapi',
             'framework_name': 'FastAPI',
             'framework_type': 'async',
+            'lib_version': _psf_version,
         },
     )
 
