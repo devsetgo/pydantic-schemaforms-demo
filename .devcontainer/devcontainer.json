@@ -27,7 +27,7 @@
 		32080
 	],
 	"postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && (sudo chmod 666 /var/run/docker.sock || true)",
-	// "postStartCommand": "",
+	"postStartCommand": "bash scripts/sync-lib-examples.sh",
 	"customizations": {
 		"vscode": {
 			"settings": {
