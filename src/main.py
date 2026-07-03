@@ -25,6 +25,7 @@ import os
 import hmac
 import secrets
 import sys
+import types
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -66,6 +67,26 @@ from pydantic_schemaforms.assets.runtime import (
     read_asset_text,
 )
 from pydantic_schemaforms.live_validation import validation_response_headers
+
+
+def _install_examples_import_compat() -> None:
+    """Provide legacy `examples.*` modules expected by some renderer fallbacks."""
+    if 'examples.shared_models' in sys.modules:
+        return
+
+    from . import models as shared_models
+
+    examples_pkg = sys.modules.get('examples')
+    if examples_pkg is None:
+        examples_pkg = types.ModuleType('examples')
+        examples_pkg.__path__ = []  # Mark as package for nested imports.
+        sys.modules['examples'] = examples_pkg
+
+    sys.modules['examples.shared_models'] = shared_models
+    setattr(examples_pkg, 'shared_models', shared_models)
+
+
+_install_examples_import_compat()
 
 
 # ---------------------------------------------------------------------------
