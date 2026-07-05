@@ -177,6 +177,18 @@ def _request_is_https(request: Request) -> bool:
 async def analytics_middleware(request: Request, call_next):
     start = time.perf_counter()
 
+    # Skip analytics for internal IP ranges (e.g., 10.*). These are
+    # internal service calls that should not be recorded or tarpitted.
+    try:
+        _client_ip = extract_client_ip(dict(request.headers), getattr(request.client, 'host', None))
+        if _client_ip:
+            cip = (_client_ip or '').strip()
+            if cip.startswith('10.') or cip == '10.42.0.1':
+                return await call_next(request)
+    except Exception:
+        # Fall through to normal handling if anything goes wrong.
+        pass
+
     request_id = _get_or_create_request_id(request)
     user_id, should_set_user_cookie = _get_or_create_user_id(request)
     request.state.request_id = request_id

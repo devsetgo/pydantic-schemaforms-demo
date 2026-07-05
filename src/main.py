@@ -41,7 +41,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from pydantic_schemaforms import __version__ as _psf_version
+from . import __version__ as _demo_version
 
 from . import app_routes, examples_routes
 from .middleware import analytics_middleware
@@ -161,7 +161,7 @@ logger = _configure_logging()
 app = FastAPI(
     title='Pydantic SchemaForms - FastAPI Example',
     description='Comprehensive showcase of pydantic-schemaforms capabilities in async FastAPI',
-    version=_psf_version,
+    version=_demo_version,
     openapi_tags=_openapi_tags,
     lifespan=lifespan,
 )
@@ -183,6 +183,12 @@ app.mount('/static', StaticFiles(directory=_base_dir / 'static'), name='static')
 
 app.include_router(examples_routes.router)
 app.include_router(app_routes.router)
+
+# Demo-only: the "Demo v..." badge in shared_base.html is guarded by
+# `{% if demo_version %}`, so it silently disappears if this template is
+# copied into the library's own lib-examples app (which never sets this).
+examples_routes.templates.env.globals['demo_version'] = _demo_version
+app_routes.templates.env.globals['demo_version'] = _demo_version
 
 app.add_exception_handler(404, app_routes.not_found_handler)
 app.add_exception_handler(500, app_routes.server_error_handler)
