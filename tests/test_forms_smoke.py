@@ -4,7 +4,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import FORM_REGISTRY, app
+from src.examples_routes import FORM_REGISTRY
+from src.main import app
 
 client = TestClient(app)
 

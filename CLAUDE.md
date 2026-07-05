@@ -12,7 +12,7 @@ The library's canonical examples live in `lib-examples/` (synced from the `main`
 
 | lib-examples source | Demo app target | What it covers |
 |---|---|---|
-| `lib-examples/fastapi_example.py` | `src/main.py` | Routes, endpoints, API handlers |
+| `lib-examples/fastapi_example.py` | `src/examples_routes.py` | Routes, endpoints, API handlers |
 | `lib-examples/shared_models.py` | `src/models.py` | Form models, enums, organization structures |
 | `lib-examples/nested_forms_example.py` | `src/nested_forms_models.py` | Deeply nested / tabbed form models |
 | `lib-examples/templates/home.html` | `src/templates/home.html` | Home page |
@@ -24,26 +24,39 @@ The library's canonical examples live in `lib-examples/` (synced from the `main`
 
 ---
 
+## Module layout (demo app only — no counterpart in lib-examples)
+
+The demo app splits `src/main.py` into focused modules. Only `src/examples_routes.py`
+is synced from lib-examples; the rest are demo-app-only composition/infrastructure:
+
+| Module | Purpose |
+|---|---|
+| `src/main.py` | Composition root: creates the `FastAPI` app, wires middleware/lifespan, includes routers. Not synced from lib-examples. |
+| `src/examples_routes.py` | The library showcase routes — **this is what gets synced from `lib-examples/fastapi_example.py`.** |
+| `src/app_routes.py` | Demo-app-only routes: analytics dashboard, `/robots.txt`, `/security`, error handlers. |
+| `src/middleware.py` | The analytics/anti-scan HTTP middleware. |
+| `src/resources.py` | Startup/shutdown lifecycle (analytics DB init, IP-geo worker). |
+
 ## How to sync
 
-### 1. Routes and endpoints (`src/main.py`)
+### 1. Routes and endpoints (`src/examples_routes.py`)
 
-Compare `lib-examples/fastapi_example.py` to `src/main.py` function by function.
+Compare `lib-examples/fastapi_example.py` to `src/examples_routes.py` function by function.
 
 **Port from lib-examples:**
-- New `@app.get` / `@app.post` routes
+- New `@app.get` / `@app.post` routes (becomes `@router.get` / `@router.post` here — this file defines an `APIRouter`, not the `FastAPI` app itself)
 - Changed route paths or HTTP methods
 - New or changed `FormModel` classes defined inline in the example (e.g. `ContactForm`, `FeedbackForm`)
-- New API tags (`_openapi_tags`) and their descriptions
+- New API tags and their descriptions (the `_openapi_tags` list itself lives in `src/main.py`, since it's passed to the `FastAPI(...)` constructor there)
 - Changes to helper functions like `render_self_contained_demo_page`
 
 **Adjust imports when porting:** lib-examples uses `from examples.shared_models import ...` and `from examples.nested_forms_example import ...`. The demo app uses `from .models import ...` and `from .nested_forms_models import ...`.
 
-**Do not touch in `src/main.py`:**
-- The analytics middleware block (if present)
-- Any `from .analytics import` or `from .ip_geo_*` imports
-- Dashboard-related routes (`/dashboard`, `/central-dashboard`, etc.) — these don't exist in lib-examples
-- The `lifespan` context manager (handles analytics DB setup and ip_geo worker)
+**Do not touch:**
+- `src/app_routes.py`, `src/middleware.py`, `src/resources.py` — demo-app-only, no lib-examples counterpart
+- Any `from .analytics import` or `from .ip_geo_*` imports (in `app_routes.py`/`middleware.py`/`resources.py`)
+- Dashboard-related routes (`/dashboard`, `/central`, etc.) — these live in `app_routes.py` and don't exist in lib-examples
+- The `lifespan` context manager in `resources.py` (handles analytics DB setup and ip_geo worker)
 
 ### 2. Form models (`src/models.py` and `src/nested_forms_models.py`)
 
@@ -100,7 +113,7 @@ When syncing route handlers from lib-examples, **preserve any analytics calls** 
 Before editing any file, diff lib-examples against the demo app to understand the delta:
 
 ```bash
-diff lib-examples/fastapi_example.py src/main.py
+diff lib-examples/fastapi_example.py src/examples_routes.py
 diff lib-examples/shared_models.py src/models.py
 diff lib-examples/templates/home.html src/templates/home.html
 diff lib-examples/templates/shared_base.html src/templates/shared_base.html
