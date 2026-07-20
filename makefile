@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.7.5.2
+APP_VERSION = 26.7.19.1
 PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest
@@ -30,7 +30,7 @@ REQUIREMENTS_PATH = requirements.txt
 DOCKER_REGISTRY ?= docker.io
 DOCKER_REPO ?= mikeryan56/$(REPONAME)
 
-.PHONY: alembic-revision alembic-upgrade ensure-alembic bump bump-undo bump-undo-id bump-history autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live
+.PHONY: alembic-revision alembic-upgrade ensure-alembic bump bump-undo bump-undo-id bump-history autoflake black cleanup create-docs flake8 help install isort run-example run-example-dev speedtest test smoke-live copy-examples
 
 ALEMBIC_REV_ID = $(subst .,_,$(APP_VERSION))
 
@@ -212,3 +212,13 @@ alembic-revision: ensure-alembic ## Create an Alembic revision named by APP_VERS
 	fi
 
 docker-deploy: docker-build docker-push ## Build, push, and run the Docker container for the demo app
+
+
+copy-examples: ## copy examples from pydantic-schemaforms to this repo (replace lib-examples contents, keep lib-examples/README.md)
+	@echo "Syncing examples into lib-examples (replaces contents, preserving README.md)..."
+	@mkdir -p lib-examples
+	@# Remove everything except README.md
+	@sh -c 'if [ -d lib-examples ]; then find lib-examples -mindepth 1 ! -name README.md -exec rm -rf {} +; fi'
+	@# Prefer rsync for copying (skip pyc and __pycache__, do not overwrite README.md in lib-examples)
+	@rsync -a --exclude='*.pyc' --exclude='**/__pycache__/' --exclude='README.md' /home/mike/pydantic-schemaforms/examples/ lib-examples/ 2>/dev/null \
+		|| (echo "(rsync not available) falling back to cp (no-overwrite)..."; cp -a -n /home/mike/pydantic-schemaforms/examples/. lib-examples/; find lib-examples -name '*.pyc' -delete; find lib-examples -type d -name '__pycache__' -exec rm -rf {} +)

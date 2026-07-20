@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import pydantic_schemaforms; print\\(pydantic_schemaforms.__file__\\); print\\(pydantic_schemaforms.__version__\\)\")",
+      "Bash(python3 -c \"import pydantic_schemaforms; print\\([x for x in dir\\(pydantic_schemaforms\\) if 'captcha' in x.lower\\(\\)]\\)\")",
+      "Bash(python3 -c \"import pydantic_schemaforms, os; print\\(os.path.dirname\\(pydantic_schemaforms.__file__\\)\\)\")"
+    ]
+  }
+}
