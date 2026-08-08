@@ -1,5 +1,138 @@
 [
   {
+    "operation_id": "20260808_021315_726",
+    "timestamp": "2026-08-08T02:13:15.735936",
+    "version": "26.8.7.2",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260808_021315_726_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260808_021315_726_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260808_021315_726___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.8.7.2"
+  },
+  {
+    "operation_id": "20260807_221029_849",
+    "timestamp": "2026-08-07T22:10:29.859421",
+    "version": "26.8.7.1",
+    "files_updated": [
+      "/home/mike/demo-pydantic-schemaforms/makefile",
+      "/home/mike/demo-pydantic-schemaforms/pyproject.toml",
+      "/home/mike/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/home/mike/demo-pydantic-schemaforms/makefile": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260807_221029_849_makefile",
+      "/home/mike/demo-pydantic-schemaforms/pyproject.toml": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260807_221029_850_pyproject.toml",
+      "/home/mike/demo-pydantic-schemaforms/src/__init__.py": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260807_221029_851___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.8.7.1"
+  },
+  {
+    "operation_id": "20260720_003615_543",
+    "timestamp": "2026-07-20T00:36:15.549666",
+    "version": "26.7.19.1",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260720_003615_543_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260720_003615_543_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260720_003615_543___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.7.19.1"
+  },
+  {
+    "operation_id": "20260705_212229_302",
+    "timestamp": "2026-07-05T21:22:29.329338",
+    "version": "26.7.5.2",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_212229_302_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_212229_303_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_212229_304___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.7.5.2"
+  },
+  {
+    "operation_id": "20260705_172158_655",
+    "timestamp": "2026-07-05T17:21:58.678912",
+    "version": "26.7.5.1",
+    "files_updated": [
+      "/home/mike/demo-pydantic-schemaforms/makefile",
+      "/home/mike/demo-pydantic-schemaforms/pyproject.toml",
+      "/home/mike/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/home/mike/demo-pydantic-schemaforms/makefile": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_172158_655_makefile",
+      "/home/mike/demo-pydantic-schemaforms/pyproject.toml": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_172158_656_pyproject.toml",
+      "/home/mike/demo-pydantic-schemaforms/src/__init__.py": "/home/mike/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_172158_657___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.7.5.1"
+  },
+  {
+    "operation_id": "20260705_003311_803",
+    "timestamp": "2026-07-05T00:33:11.817197",
+    "version": "26.7.4.1",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_003311_803_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_003311_804_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260705_003311_804___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.7.4.1"
+  },
+  {
+    "operation_id": "20260703_233540_747",
+    "timestamp": "2026-07-03T23:35:40.761982",
+    "version": "26.7.3.1",
+    "files_updated": [
+      "/workspaces/demo-pydantic-schemaforms/makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py"
+    ],
+    "backups": {
+      "/workspaces/demo-pydantic-schemaforms/makefile": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260703_233540_747_makefile",
+      "/workspaces/demo-pydantic-schemaforms/pyproject.toml": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260703_233540_748_pyproject.toml",
+      "/workspaces/demo-pydantic-schemaforms/src/__init__.py": "/workspaces/demo-pydantic-schemaforms/.bumpcalver/backups/20260703_233540_748___init__.py"
+    },
+    "git_tag": true,
+    "git_commit": false,
+    "git_commit_hash": null,
+    "git_tag_name": "26.7.3.1"
+  },
+  {
     "operation_id": "20260628_193308_539",
     "timestamp": "2026-06-28T19:33:08.547936",
     "version": "26.6.28.1",

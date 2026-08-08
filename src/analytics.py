@@ -187,6 +187,15 @@ _ip_re = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3})$")
 
 
 def extract_client_ip(headers: dict[str, str], fallback: str | None = None) -> str | None:
+    # Cloudflare sits in front of Traefik in this deployment: CF-Connecting-IP is
+    # Cloudflare's authoritative single-value header for the real visitor IP, so
+    # prefer it over X-Forwarded-For (which requires trusting the whole chain).
+    cf_ip = headers.get("cf-connecting-ip")
+    if cf_ip:
+        cf_ip = cf_ip.strip()
+        if cf_ip:
+            return cf_ip
+
     # Prefer X-Forwarded-For (first IP is the original client).
     xff = headers.get("x-forwarded-for")
     if xff:

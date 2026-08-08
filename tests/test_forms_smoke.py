@@ -4,7 +4,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import FORM_REGISTRY, app
+from src.examples_routes import FORM_REGISTRY
+from src.main import app
 
 client = TestClient(app)
 
@@ -285,9 +286,16 @@ def test_forms_schema_render_and_validation_smoke(form_type: str):
     if "password" in valid_payload and "confirm_password" in valid_payload:
         valid_payload["confirm_password"] = valid_payload["password"]
 
-    # Some forms enforce semantic consent rules in validators.
-    if "terms_accepted" in valid_payload:
+    # Some forms enforce semantic consent rules in validators. These boolean
+    # fields default to False and are therefore never in JSON Schema's
+    # "required" list, so build_minimal_payload_from_schema never generates
+    # them -- they must be forced in explicitly rather than checked for
+    # presence in valid_payload.
+    properties = schema.get("properties", {})
+    if "terms_accepted" in properties:
         valid_payload["terms_accepted"] = True
+    if "accept_terms" in properties:
+        valid_payload["accept_terms"] = True
 
     # Showcase model includes a custom mixed-case password validator.
     if "password_field" in valid_payload:
