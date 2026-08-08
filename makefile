@@ -1,6 +1,6 @@
 # Variables
 REPONAME = demo-pydantic-schemaforms
-APP_VERSION = 26.7.19.1
+APP_VERSION = 26.8.7.2
 PYTHON ?= python3.14
 PIP = $(PYTHON) -m pip
 PYTEST = $(PYTHON) -m pytest

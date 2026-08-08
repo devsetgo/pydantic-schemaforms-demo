@@ -12,15 +12,26 @@ The library's canonical examples live in `lib-examples/` (synced from the `main`
 
 | lib-examples source | Demo app target | What it covers |
 |---|---|---|
-| `lib-examples/fastapi_example.py` | `src/examples_routes.py` | Routes, endpoints, API handlers |
+| `lib-examples/fastapi_routes.py` | `src/examples_routes.py` | Routes, endpoints, API handlers |
 | `lib-examples/shared_models.py` | `src/models.py` | Form models, enums, organization structures |
 | `lib-examples/nested_forms_example.py` | `src/nested_forms_models.py` | Deeply nested / tabbed form models |
+| `lib-examples/date_time_formats_example.py` | `src/date_time_formats_models.py` | Custom date/time/datetime `ui_options` format showcase |
+| `lib-examples/input_type_reference.py` | `src/input_type_reference.py` | Static `ui_element` cheatsheet data for `/input-types` |
 | `lib-examples/templates/home.html` | `src/templates/home.html` | Home page |
 | `lib-examples/templates/shared_base.html` | `src/templates/shared_base.html` | Base layout |
 | `lib-examples/templates/form.html` | `src/templates/form.html` | Form rendering page |
 | `lib-examples/templates/success.html` | `src/templates/success.html` | Form success page |
 | `lib-examples/templates/404.html` | `src/templates/404.html` | 404 error page |
 | `lib-examples/templates/500.html` | `src/templates/500.html` | 500 error page |
+| `lib-examples/templates/ai_instructions.html` | `src/templates/ai_instructions.html` | AI assistant instructions page |
+| `lib-examples/templates/live_validation.html` | `src/templates/live_validation.html` | Live HTMX validation demo |
+| `lib-examples/templates/email_dns_validation.html` | `src/templates/email_dns_validation.html` | Email format vs. DNS/MX validation demo |
+| `lib-examples/templates/input_type_reference.html` | `src/templates/input_type_reference.html` | Rendered `ui_element` cheatsheet page |
+
+Note: `lib-examples/main.py` is the library's own composition root (FastAPI() construction,
+session middleware, static mount, uvicorn entrypoint) — it has no sync target. The demo
+app's `src/main.py` already plays that same role for this app and is demo-app-only (see
+below), so `lib-examples/main.py` only needs to be read for context, never ported.
 
 ---
 
@@ -32,7 +43,7 @@ is synced from lib-examples; the rest are demo-app-only composition/infrastructu
 | Module | Purpose |
 |---|---|
 | `src/main.py` | Composition root: creates the `FastAPI` app, wires middleware/lifespan, includes routers. Not synced from lib-examples. |
-| `src/examples_routes.py` | The library showcase routes — **this is what gets synced from `lib-examples/fastapi_example.py`.** |
+| `src/examples_routes.py` | The library showcase routes — **this is what gets synced from `lib-examples/fastapi_routes.py`.** |
 | `src/app_routes.py` | Demo-app-only routes: analytics dashboard, `/robots.txt`, `/security`, error handlers. |
 | `src/middleware.py` | The analytics/anti-scan HTTP middleware. |
 | `src/resources.py` | Startup/shutdown lifecycle (analytics DB init, IP-geo worker). |
@@ -41,7 +52,7 @@ is synced from lib-examples; the rest are demo-app-only composition/infrastructu
 
 ### 1. Routes and endpoints (`src/examples_routes.py`)
 
-Compare `lib-examples/fastapi_example.py` to `src/examples_routes.py` function by function.
+Compare `lib-examples/fastapi_routes.py` to `src/examples_routes.py` function by function.
 
 **Port from lib-examples:**
 - New `@app.get` / `@app.post` routes (becomes `@router.get` / `@router.post` here — this file defines an `APIRouter`, not the `FastAPI` app itself)
@@ -113,7 +124,7 @@ When syncing route handlers from lib-examples, **preserve any analytics calls** 
 Before editing any file, diff lib-examples against the demo app to understand the delta:
 
 ```bash
-diff lib-examples/fastapi_example.py src/examples_routes.py
+diff lib-examples/fastapi_routes.py src/examples_routes.py
 diff lib-examples/shared_models.py src/models.py
 diff lib-examples/templates/home.html src/templates/home.html
 diff lib-examples/templates/shared_base.html src/templates/shared_base.html

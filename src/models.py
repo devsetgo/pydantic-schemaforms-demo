@@ -2649,28 +2649,28 @@ class LayoutDemonstrationForm(FormModel):
     Each field represents a different layout type that can be rendered as a tab.
     """
 
-    vertical_tab: VerticalFormLayout = FormField(
+    personal_info: VerticalFormLayout = FormField(
         default_factory=VerticalFormLayout,
         title='Personal Info',
         input_type='layout',
         help_text='Vertical layout demonstration',
     )
 
-    horizontal_tab: HorizontalFormLayout = FormField(
+    contact_info: HorizontalFormLayout = FormField(
         default_factory=HorizontalFormLayout,
         title='Contact Info',
         input_type='layout',
         help_text='Horizontal layout demonstration',
     )
 
-    tabbed_tab: TabbedFormLayout = FormField(
+    preferences: TabbedFormLayout = FormField(
         default_factory=TabbedFormLayout,
         title='Preferences',
         input_type='layout',
         help_text='Tabbed layout demonstration',
     )
 
-    list_tab: ListFormLayout = FormField(
+    task_list: ListFormLayout = FormField(
         default_factory=ListFormLayout,
         title='Task List',
         input_type='layout',
@@ -2702,6 +2702,42 @@ class TextInputsGalleryForm(FormModel):
         ui_element='textarea',
         ui_placeholder='Multiple lines of text...',
         ui_options={'rows': 3},
+    )
+    code_json_input: str = Field(
+        '',
+        title='Code: JSON (real format + syntax highlighting)',
+        ui_element='textarea',
+        ui_options={'language': 'json', 'rows': 6},
+    )
+    code_yaml_input: str = Field(
+        '',
+        title='Code: YAML (real format + syntax highlighting)',
+        ui_element='textarea',
+        ui_options={'language': 'yaml', 'rows': 6},
+    )
+    code_toml_input: str = Field(
+        '',
+        title='Code: TOML (real format + syntax highlighting)',
+        ui_element='textarea',
+        ui_options={'language': 'toml', 'rows': 6},
+    )
+    code_bash_input: str = Field(
+        '',
+        title='Code: Bash (whitespace cleanup + syntax highlighting)',
+        ui_element='textarea',
+        ui_options={'language': 'bash', 'rows': 6},
+    )
+    code_python_input: str = Field(
+        '',
+        title='Code: Python (whitespace cleanup + syntax highlighting)',
+        ui_element='textarea',
+        ui_options={'language': 'python', 'rows': 6},
+    )
+    code_no_highlight_input: str = Field(
+        '',
+        title='Code: JSON, highlighting disabled (code_highlight=False)',
+        ui_element='textarea',
+        ui_options={'language': 'json', 'rows': 4, 'code_highlight': False},
     )
     password_input: str = Field('', title='Password', ui_element='password')
     email_input: str = Field(
@@ -2884,8 +2920,8 @@ class WidgetGalleryTabs(TabbedLayout):
     extra='ignore' picks out just that tab's fields from the shared flat dict.
     This works for *any* tab names. The multiple-layout-fields pattern instead
     depends on a fallback in validation.py/layout_engine.py that only knows
-    LayoutDemonstrationForm's specific field names (vertical_tab, horizontal_tab,
-    tabbed_tab, list_tab) -- fine for that one example, not a generic mechanism.
+    LayoutDemonstrationForm's specific field names (personal_info, contact_info,
+    preferences, task_list) -- fine for that one example, not a generic mechanism.
     """
 
     def __init__(self, form_config=None):

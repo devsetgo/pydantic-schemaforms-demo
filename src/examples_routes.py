@@ -28,18 +28,22 @@ from .models import (  # Simple Form; Medium Form; Complex Form; Pet Forms; Layo
     create_sample_nested_data,
 )
 from .nested_forms_models import create_comprehensive_sample_data
+from .date_time_formats_models import (
+    DateTimeFormatsShowcaseForm,
+    create_sample_date_time_format_data,
+)
+from .input_type_reference import INPUT_TYPE_CATEGORIES
+
+from pydantic import EmailStr
 
 from pydantic_schemaforms import (
     __version__ as _psf_version,
     EnhancedFormRenderer,
-    EmailRule,
+    DeliverableEmailStr,
     Field,
-    FieldValidator,
     FormLayoutBase,
     FormModel,
-    HTMXValidationConfig,
     LiveValidator,
-    MinLengthRule,
     available_instruction_profiles,
     get_app_instructions,
     parse_nested_form_data,
@@ -93,7 +97,7 @@ class ContactForm(FormModel):
         ui_element='text',
         ui_placeholder='Enter your full name',
     )
-    email: str = Field(
+    email: EmailStr = Field(
         ...,
         title='Email Address',
         description='We will never share your email',
@@ -152,31 +156,98 @@ class FeedbackForm(FormModel):
 # ge/le constraints (minimum/maximum) are preserved in the API schema.
 FeedbackSchema = FeedbackForm.as_api_model()
 
+# Shared by both LiveValidator.for_model() below and the hx-trigger built
+# here -- keeps the JS-side debounce and the HTMX trigger's delay in sync.
+LIVE_VALIDATION_DEBOUNCE_MS = 600
+
+_DNS_HX_ATTRS = {
+    'hx-trigger': f'blur, input delay:{LIVE_VALIDATION_DEBOUNCE_MS}ms',
+    'hx-swap': 'innerHTML',
+    'data-validate-endpoint': 'true',
+}
+
+
+class EmailDnsComparisonForm(FormModel):
+    """Two email fields, otherwise identical, that differ only in their type:
+    plain ``EmailStr`` (format only) vs. ``DeliverableEmailStr`` (format + a
+    real DNS/MX lookup) — for the /email-dns-validation "with vs. without"
+    demo. Because the DNS/MX check lives on the type itself, there's no
+    per-model validator to write: ``FormModel.validate()``,
+    ``as_api_model()``, and this module's ``register_model_validator()`` call
+    below all enforce/live-check it identically, for free.
+
+    ``ui_options`` attaches the same ``hx-post``/``hx-target`` attributes the
+    hand-written /live-validation demo uses, so both fields validate on blur
+    through the standard FormModel-rendered inputs (no custom HTML needed).
+    """
+
+    email_format_only: EmailStr = Field(
+        ...,
+        title='Without DNS/MX Check',
+        description='EmailRule format check only.',
+        examples=['someone@gmail.com'],
+        ui_element='email',
+        ui_options={
+            **_DNS_HX_ATTRS,
+            'hx-post': '/validate/email_format_only',
+            'hx-target': '#email_format_only-feedback',
+        },
+    )
+    email_with_dns: DeliverableEmailStr = Field(
+        ...,
+        title='With DNS/MX Check',
+        description="Format check, plus a real DNS lookup for the domain's MX records.",
+        examples=['someone@gmail.com'],
+        ui_element='email',
+        ui_options={
+            **_DNS_HX_ATTRS,
+            'hx-post': '/validate/email_with_dns',
+            'hx-target': '#email_with_dns-feedback',
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
-# Live-validation: field-level validators for the /live-validation demo
+# Live-validation for the /live-validation and /email-dns-validation demos.
+# LiveValidator.for_model() derives every field's live check straight from
+# each FormModel's own Field constraints/types (min_length, EmailStr,
+# DeliverableEmailStr's DNS/MX lookup, ...) and checks as-you-type (debounced)
+# rather than only on blur -- no separate FieldValidator to hand-write or
+# keep in sync with the model.
 # ---------------------------------------------------------------------------
 
-_contact_live_validator = LiveValidator(
-    HTMXValidationConfig(validate_on_blur=True, validate_on_input=False, validate_on_change=False)
+_contact_live_validator = LiveValidator.for_model(
+    ContactForm, EmailDnsComparisonForm, debounce_ms=LIVE_VALIDATION_DEBOUNCE_MS
 )
-
-_nv = FieldValidator('name')
-_nv.add_rule(MinLengthRule(2, message='Name must be at least 2 characters'))
-_contact_live_validator.register_field_validator(_nv)
-
-_ev = FieldValidator('email')
-_ev.add_rule(EmailRule())
-_contact_live_validator.register_field_validator(_ev)
-
-_mv = FieldValidator('message')
-_mv.add_rule(MinLengthRule(10, message='Message must be at least 10 characters'))
-_contact_live_validator.register_field_validator(_mv)
-
 _LIVE_VALIDATOR_SCRIPT = _contact_live_validator.render_htmx_script()
 
 
 LOGIN_CSRF_SESSION_KEY = 'login_csrf_token'
 REGISTER_CSRF_SESSION_KEY = 'register_csrf_token'
+
+
+def _group_form_data(form_data) -> dict:
+    """Build a dict from Starlette FormData without losing repeated keys.
+
+    ``dict(form_data)`` keeps only the last value for a repeated key, which
+    silently drops all but one selection from a native ``<select multiple>``
+    or several checkboxes sharing one ``name``. Iterating
+    ``form_data.multi_items()`` instead preserves every value, grouping
+    repeats into a list so parse_nested_form_data() (and the schema-aware
+    coercion in validate_form_data()) can turn a single selection back into
+    a one-item list and a multi-selection into the full list.
+    """
+    grouped: dict = {}
+    for key, value in form_data.multi_items():
+        if key in grouped:
+            existing = grouped[key]
+            if isinstance(existing, list):
+                existing.append(value)
+            else:
+                grouped[key] = [existing, value]
+        else:
+            grouped[key] = value
+    return grouped
 
 
 def issue_login_csrf_token(request: Request) -> str:
@@ -208,10 +279,6 @@ def verify_register_csrf_token(request: Request, submitted_token) -> bool:
         return False
     return hmac.compare_digest(str(expected_token), str(submitted_token))
 
-
-# List[str]-typed fields on CompleteShowcaseForm -- see showcase_post()'s
-# form-data parsing for why these need special handling.
-_SHOWCASE_LIST_FIELDS = {'multiselect_field', 'checkbox_group_field'}
 
 SHOWCASE_CSRF_SESSION_KEY = 'showcase_csrf_token'
 
@@ -272,9 +339,6 @@ def safe_json_filter(obj):
 
 # Register the custom filter
 templates.env.filters['safe_json'] = safe_json_filter
-
-
-# Mount /static to serve images (for favicon, etc.)
 
 
 @router.get('/vendor/bootstrap-icons.css', tags=['System'])
@@ -356,7 +420,6 @@ async def home(request: Request):
             'framework': 'fastapi',
             'framework_name': 'FastAPI',
             'framework_type': 'async',
-            'lib_version': _psf_version,
         },
     )
 
@@ -427,7 +490,7 @@ async def login_post(
     """Simple form example - Login form submission (async)."""
     # Get form data asynchronously
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
 
     submitted_csrf_token = form_dict.pop('csrf_token', None)
     csrf_error = 'CSRF verification failed. Refresh the page and submit again.'
@@ -605,7 +668,7 @@ async def register_post(
     """Medium complexity form - User registration submission (async)."""
     # Get form data asynchronously
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
 
     submitted_csrf_token = form_dict.pop('csrf_token', None)
     csrf_error = 'CSRF verification failed. Refresh the page and submit again.'
@@ -790,22 +853,13 @@ async def showcase_post(
     request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
 ):
     """Complex form example - All features submission (async)."""
-    # Get form data asynchronously. Unlike every other route in this file,
     # CompleteShowcaseForm has genuinely multi-value fields (multiselect_field,
-    # checkbox_group_field), so a plain dict(form_data) would silently keep
-    # only the last submitted value per key. Use getlist() per key instead so
-    # repeated keys collect into a real list for parse_nested_form_data.
-    # These two are List[str]-typed, so they must stay lists even when only
-    # one option is checked/selected -- len(values) > 1 alone would collapse
-    # a single selection back down to a bare string and fail validation.
+    # checkbox_group_field). _group_form_data() preserves repeated keys as a
+    # list; validate_form_data()'s schema-aware coercion wraps a lone
+    # selection back into a single-item list for any List[<scalar>] field,
+    # so no per-field allowlist is needed here.
     form_data = await request.form()
-    form_dict = {}
-    for key in dict.fromkeys(form_data.keys()):
-        values = form_data.getlist(key)
-        if key in _SHOWCASE_LIST_FIELDS or len(values) > 1:
-            form_dict[key] = values
-        else:
-            form_dict[key] = values[0]
+    form_dict = _group_form_data(form_data)
 
     full_referer_path = create_refer_path(request)
 
@@ -954,10 +1008,6 @@ async def showcase_post(
 # WIDGET GALLERY - TABBED BY INPUT-TYPE CATEGORY
 # ================================
 
-# List[str]-typed fields across WidgetGalleryForm's tabs -- see gallery_post()'s
-# form-data parsing for why these need special handling.
-_GALLERY_LIST_FIELDS = {'multiselect_input', 'checkbox_group_stacked', 'checkbox_group_buttons'}
-
 
 @router.get('/gallery', response_class=HTMLResponse, tags=['Showcase'])
 async def gallery_get(
@@ -998,6 +1048,12 @@ async def gallery_get(
             # Text Inputs
             'text_input': 'Hello, world!',
             'textarea_input': 'This textarea supports\nmultiple lines of text.',
+            'code_json_input': '{\n  "name": "demo",\n  "enabled": true\n}',
+            'code_yaml_input': 'name: demo\nenabled: true\n',
+            'code_toml_input': 'name = "demo"\nenabled = true\n',
+            'code_bash_input': '#!/usr/bin/env bash\necho "hello, demo"\n',
+            'code_python_input': 'def hello():\n    print("hello, demo")\n',
+            'code_no_highlight_input': '{\n  "highlighting": "off"\n}',
             'password_input': 'demo-password',
             'email_input': 'demo@example.com',
             'search_input': 'pydantic schemaforms',
@@ -1078,20 +1134,12 @@ async def gallery_post(
 ):
     """Tabbed widget gallery submission (async)."""
     # Several tabs have genuinely multi-value fields (multiselect_input,
-    # checkbox_group_stacked, checkbox_group_buttons) -- dict(form_data) would
-    # silently keep only the last value per repeated key, so use getlist()
-    # per key instead (same fix as showcase_post()). These three are
-    # List[str]-typed, so they must stay lists even with only one value
-    # checked/selected -- len(values) > 1 alone would collapse a single
-    # selection back down to a bare string and fail validation.
+    # checkbox_group_stacked, checkbox_group_buttons). _group_form_data()
+    # preserves repeated keys as a list; validate_form_data()'s schema-aware
+    # coercion wraps a lone selection back into a single-item list for any
+    # List[<scalar>] field, so no per-field allowlist is needed here.
     form_data = await request.form()
-    form_dict = {}
-    for key in dict.fromkeys(form_data.keys()):
-        values = form_data.getlist(key)
-        if key in _GALLERY_LIST_FIELDS or len(values) > 1:
-            form_dict[key] = values
-        else:
-            form_dict[key] = values[0]
+    form_dict = _group_form_data(form_data)
 
     parsed_data = parse_nested_form_data(form_dict)
     validation = WidgetGalleryForm.validate(
@@ -1127,6 +1175,118 @@ async def gallery_post(
                 'request': request,
                 'title': 'Widget Gallery - Tabbed by Category',
                 'description': 'Every input type grouped into tabs by category',
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'framework_type': style,
+                'form_html': form_html,
+                'errors': validation.errors,
+            },
+        )
+
+
+# ================================
+# DATE/TIME FORMAT SHOWCASE
+# ================================
+
+
+@router.get('/date-time-formats', response_class=HTMLResponse, tags=['Showcase'])
+async def date_time_formats_get(
+    request: Request,
+    style: str = 'bootstrap',
+    data: str = None,
+    demo: bool = True,
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Custom date/time/datetime display format showcase (GET).
+
+    Demo data must be flat (no top-level 'formats' key) -- same reasoning as
+    WidgetGalleryForm's demo route: DateTimeFormatsShowcaseForm has a single
+    ui_element='layout' field, so flat keys let the renderer's own nested-data
+    reconstruction find each tab's fields by name.
+    """
+    form_data = {}
+    if data:
+        try:
+            import json
+
+            form_data = json.loads(data)
+        except Exception:
+            pass  # Ignore invalid JSON
+    elif demo:
+        form_data = create_sample_date_time_format_data()
+
+    form_html = await render_form_html_async(
+        DateTimeFormatsShowcaseForm,
+        framework=style,
+        form_data=form_data,
+        submit_url=f'/date-time-formats?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'form.html',
+        {
+            'request': request,
+            'title': 'Date/Time Format Showcase',
+            'description': (
+                'Custom date_format/time_format/datetime_format ui_options: USA, '
+                'Europe, Asia, military (24-hour) time, and compact year-month-day '
+                'shapes, grouped into Date/Time/Datetime tabs'
+            ),
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+        },
+    )
+
+
+@router.post('/date-time-formats', response_class=HTMLResponse, tags=['Showcase'])
+async def date_time_formats_post(
+    request: Request, style: str = 'bootstrap', debug: bool = False, show_timing: bool = True
+):
+    """Date/time/datetime format showcase submission (async)."""
+    form_data = await request.form()
+    form_dict = _group_form_data(form_data)
+
+    parsed_data = parse_nested_form_data(form_dict)
+    validation = DateTimeFormatsShowcaseForm.validate(
+        parsed_data,
+        submit_url=f'/date-time-formats?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Date/Time Formats Submitted Successfully',
+                'message': 'Every date/time/datetime format parsed and validated correctly!',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+    else:
+        form_html = await validation.render_with_errors_async()
+        return templates.TemplateResponse(
+            request,
+            'form.html',
+            {
+                'request': request,
+                'title': 'Date/Time Format Showcase',
+                'description': 'Please fix the highlighted fields',
                 'framework': 'fastapi',
                 'framework_name': 'FastAPI (Async)',
                 'framework_type': style,
@@ -1306,7 +1466,7 @@ async def pets_post(
     """Pet registration form submission."""
     # Get form data asynchronously
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
 
     parsed_data = parse_nested_form_data(form_dict)
     validation = PetRegistrationForm.validate(
@@ -1439,7 +1599,7 @@ async def organization_post(
     """
     # Get form data asynchronously
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
 
     from .nested_forms_models import ComprehensiveTabbedForm
 
@@ -1551,7 +1711,7 @@ async def organization_shared_post(
     model can power multiple framework routes and API endpoints.
     """
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
 
     parsed_data = parse_nested_form_data(form_dict)
     validation = CompanyOrganizationForm.validate(
@@ -1617,25 +1777,25 @@ async def layouts_get(
     elif demo or not data:
         # Add demo data for easier testing of all layout types
         form_data = {
-            'vertical_tab': {
+            'personal_info': {
                 'first_name': 'Alex',
                 'last_name': 'Johnson',
                 'email': 'alex.johnson@example.com',
                 'birth_date': '1990-05-15',
             },
-            'horizontal_tab': {
+            'contact_info': {
                 'phone': '+1 (555) 987-6543',
                 'address': '456 Demo Street',
                 'city': 'San Francisco',
                 'postal_code': '94102',
             },
-            'tabbed_tab': {
+            'preferences': {
                 'notification_email': True,
                 'notification_sms': False,
                 'theme': 'dark',
                 'language': 'en',
             },
-            'list_tab': {
+            'task_list': {
                 'project_name': 'Demo Project',
                 'tasks': [
                     {
@@ -1689,7 +1849,7 @@ async def layouts_post(
 ):
     """Handle comprehensive layout demonstration form submission."""
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
     full_referer_path = create_refer_path(request)
 
     parsed_data = parse_nested_form_data(form_dict)
@@ -1811,7 +1971,7 @@ async def self_contained_post(
         selected_style = 'material'
 
     form_data = await request.form()
-    form_dict = dict(form_data)
+    form_dict = _group_form_data(form_data)
     parsed_data = parse_nested_form_data(form_dict)
     _submit_url = f'/self-contained?style={selected_style}&demo=false&debug={str(debug).lower()}&show_timing={str(show_timing).lower()}'
     validation = UserRegistrationForm.validate(
@@ -1884,13 +2044,42 @@ async def api_form_schema(form_type: str):
     return {'form_type': form_type, 'schema': schema, 'framework': 'fastapi'}
 
 
+@router.get('/api/forms/{form_type}/pydantic-schema', tags=['Generic Form API'])
+async def api_form_pydantic_schema(form_type: str):
+    """
+    Return the standard, nested-aware JSON Schema for the form's underlying
+    Pydantic model, via ``get_pydantic_json_schema()``.
+
+    Unlike ``/schema`` above (a flattened, UI-oriented shape used for
+    rendering), this includes real ``$defs``/``$ref`` for nested BaseModel
+    and List[BaseModel] fields — e.g. try `form_type=organization` to see
+    Department/Team/TeamMember/Certification each get their own `$defs`
+    entry instead of being collapsed to a generic `string`/`object` type.
+    """
+
+    if form_type not in FORM_REGISTRY:
+        raise HTTPException(status_code=404, detail='Form type not found')
+
+    form_class = FORM_REGISTRY[form_type]
+    schema = form_class.get_pydantic_json_schema()
+
+    return {'form_type': form_type, 'schema': schema, 'framework': 'fastapi'}
+
+
 @router.post('/api/forms/{form_type}/submit', tags=['Generic Form API'])
-async def api_submit_form(form_type: str, request: Request):
+async def api_submit_form(form_type: str, request: Request, flatten: bool = False):
     """
     Validate JSON form submissions against a selected Pydantic form model.
 
     This shows the API workflow behind the HTML examples:
     request payload -> model validation -> normalized data/errors response.
+
+    By default, nested models (e.g. the `organization` form's
+    departments -> teams -> members) round-trip as nested JSON, matching the
+    shape of the underlying Pydantic model. Pass ``?flatten=true`` to submit
+    and receive bracket+dot flat keys instead (e.g.
+    ``"departments[0].teams[0].members[0].name"``), which some form-building
+    clients prefer.
     """
 
     if form_type not in FORM_REGISTRY:
@@ -1900,7 +2089,7 @@ async def api_submit_form(form_type: str, request: Request):
 
     json_data = await request.json()
 
-    validation = form_class.validate(json_data)
+    validation = form_class.validate(json_data, flatten=flatten)
 
     return {
         'success': validation.is_valid,
@@ -1993,7 +2182,7 @@ async def contact_post(
 ):
     """Accept and validate a browser form submission (multipart/form-data)."""
     raw = await request.form()
-    data = parse_nested_form_data(raw)
+    data = parse_nested_form_data(raw.multi_items())
     result = ContactForm.validate(data, submit_url=f'/contact?style={style}', framework=style)
     if result.is_valid:
         return templates.TemplateResponse(
@@ -2097,7 +2286,7 @@ async def feedback_post(
 ):
     """Accept and validate a browser feedback submission."""
     raw = await request.form()
-    data = parse_nested_form_data(raw)
+    data = parse_nested_form_data(raw.multi_items())
     result = FeedbackForm.validate(data, submit_url=f'/feedback?style={style}', framework=style)
     if result.is_valid:
         return templates.TemplateResponse(
@@ -2155,18 +2344,19 @@ async def api_feedback_schema():
 
 @router.get('/live-validation', response_class=HTMLResponse, tags=['Live Validation'])
 async def live_validation_get(request: Request, style: str = 'bootstrap'):
-    """Demonstrate real-time HTMX field validation on blur."""
+    """Demonstrate real-time HTMX field validation as-you-type (debounced)."""
     return templates.TemplateResponse(
         request,
         'live_validation.html',
         {
             'request': request,
             'title': 'Live HTMX Validation',
-            'description': 'Fields validate on blur via HTMX — no page reload required.',
+            'description': 'Fields validate as you type (debounced) via HTMX — no page reload required.',
             'framework': 'fastapi',
             'framework_name': 'FastAPI (Async)',
             'framework_type': style,
             'validator_script': _LIVE_VALIDATOR_SCRIPT,
+            'debounce_ms': LIVE_VALIDATION_DEBOUNCE_MS,
             'form_data': {},
             'errors': {},
         },
@@ -2177,7 +2367,7 @@ async def live_validation_get(request: Request, style: str = 'bootstrap'):
 async def live_validation_post(request: Request, style: str = 'bootstrap'):
     """Handle contact form submission for the live-validation demo."""
     raw = await request.form()
-    data = parse_nested_form_data(raw)
+    data = parse_nested_form_data(raw.multi_items())
     result = ContactForm.validate(
         data, submit_url=f'/live-validation?style={style}', framework=style
     )
@@ -2201,11 +2391,12 @@ async def live_validation_post(request: Request, style: str = 'bootstrap'):
         {
             'request': request,
             'title': 'Live HTMX Validation',
-            'description': 'Fields validate on blur via HTMX — no page reload required.',
+            'description': 'Fields validate as you type (debounced) via HTMX — no page reload required.',
             'framework': 'fastapi',
             'framework_name': 'FastAPI (Async)',
             'framework_type': style,
             'validator_script': _LIVE_VALIDATOR_SCRIPT,
+            'debounce_ms': LIVE_VALIDATION_DEBOUNCE_MS,
             'form_data': data,
             'errors': result.errors,
         },
@@ -2217,7 +2408,14 @@ async def htmx_validate_field(field_name: str, request: Request):
     """HTMX endpoint: validate a single contact form field and return feedback HTML."""
     raw = await request.form()
     value = raw.get(field_name, '')
-    result = _contact_live_validator.validate_field(field_name, str(value))
+    try:
+        result = _contact_live_validator.validate_field(field_name, str(value))
+    except ImportError as e:
+        # EmailDeliverabilityRule's DNS/MX check needs the optional
+        # email-validator package — surface that as feedback instead of a 500.
+        feedback = f'<span class="text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{e}</span>'
+        headers = validation_response_headers(field_name, False)
+        return HTMLResponse(feedback, headers=headers)
     if result.is_valid:
         feedback = '<span class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>Looks good!</span>'
     else:
@@ -2225,6 +2423,97 @@ async def htmx_validate_field(field_name: str, request: Request):
         feedback = f'<span class="text-danger small"><i class="bi bi-exclamation-circle-fill me-1"></i>{error_text}</span>'
     headers = validation_response_headers(field_name, result.is_valid)
     return HTMLResponse(feedback, headers=headers)
+
+
+@router.get('/email-dns-validation', response_class=HTMLResponse, tags=['Live Validation'])
+async def email_dns_validation_get(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Side-by-side demo: email format validation with and without a DNS/MX check."""
+    form_html = await render_form_html_async(
+        EmailDnsComparisonForm,
+        framework=style,
+        submit_url=f'/email-dns-validation?style={style}',
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        'email_dns_validation.html',
+        {
+            'request': request,
+            'title': 'Email DNS/MX Validation',
+            'description': 'Two field types, same demo: EmailStr (format-only) vs. DeliverableEmailStr (format + a real DNS/MX lookup).',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+            'validator_script': _LIVE_VALIDATOR_SCRIPT,
+        },
+    )
+
+
+@router.post('/email-dns-validation', response_class=HTMLResponse, tags=['Live Validation'])
+async def email_dns_validation_post(
+    request: Request,
+    style: str = 'bootstrap',
+    debug: bool = False,
+    show_timing: bool = True,
+):
+    """Submit-time validation for the DNS/MX comparison demo.
+
+    email_with_dns's DeliverableEmailStr type runs the same DNS/MX lookup the
+    live HTMX endpoint uses, so a domain that fails on blur also fails here
+    rather than silently passing on submit.
+    """
+    raw = await request.form()
+    parsed_data = parse_nested_form_data(_group_form_data(raw))
+    validation = EmailDnsComparisonForm.validate(
+        parsed_data,
+        submit_url=f'/email-dns-validation?style={style}',
+        framework=style,
+        debug=debug,
+        show_timing=show_timing,
+        enable_logging=True,
+    )
+
+    full_referer_path = create_refer_path(request)
+    if validation.is_valid:
+        return templates.TemplateResponse(
+            request,
+            'success.html',
+            {
+                'request': request,
+                'title': 'Both Emails Passed Validation',
+                'message': 'Both fields — including the DNS/MX check — passed.',
+                'data': validation.data,
+                'framework': 'fastapi',
+                'framework_name': 'FastAPI (Async)',
+                'try_again_url': full_referer_path,
+            },
+        )
+
+    form_html = await validation.render_with_errors_async()
+    return templates.TemplateResponse(
+        request,
+        'email_dns_validation.html',
+        {
+            'request': request,
+            'title': 'Email DNS/MX Validation',
+            'description': 'Two field types, same demo: EmailStr (format-only) vs. DeliverableEmailStr (format + a real DNS/MX lookup).',
+            'framework': 'fastapi',
+            'framework_name': 'FastAPI (Async)',
+            'framework_type': style,
+            'form_html': form_html,
+            'validator_script': _LIVE_VALIDATOR_SCRIPT,
+            'errors': validation.errors,
+        },
+    )
 
 
 # ================================
@@ -2255,6 +2544,29 @@ async def ai_instructions_page(request: Request):
             'request': request,
             'title': 'AI Assistant Instructions',
             'profiles': profiles,
+        },
+    )
+
+
+# ================================
+# INPUT TYPE REFERENCE
+# ================================
+
+
+@router.get('/input-types', response_class=HTMLResponse, tags=['System'])
+async def input_type_reference_page(request: Request):
+    """Plain documentation page: every ui_element with a code example.
+
+    Static reference data only -- nothing here goes through the form
+    renderer. See /gallery for the live-rendered version.
+    """
+    return templates.TemplateResponse(
+        request,
+        'input_type_reference.html',
+        {
+            'request': request,
+            'title': 'Input Type Reference',
+            'categories': INPUT_TYPE_CATEGORIES,
         },
     )
 
